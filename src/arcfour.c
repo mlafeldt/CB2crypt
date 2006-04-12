@@ -29,7 +29,7 @@
  */
 #include "arcfour.h"
 
-static inline void swap_bytes(u8 *a, u8 *b)
+static __inline void swap_bytes(u8 *a, u8 *b)
 {
 	u8 tmp;
 

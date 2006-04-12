@@ -7,6 +7,7 @@ CINCS	= -I$(BIG_INT_DIR)/include
 COPTS	= -O2 -Wall -s
 CLIBS	= -mwindows
 BIN	= CB2crypt.exe
+RM	= rm -f
 
 # BIG_INT library
 BIG_INT_DIR = libbig_int
@@ -34,7 +35,7 @@ OBJS	= $(BIG_INT_OBJS) arcfour.o cb2_crypto.o CB2crypt.o mystring.o resource.o
 all:		${OBJS}
 		${CC} $(COPTS) -o ${BIN} ${OBJS} $(CLIBS)
 clean:
-		rm -f ${BIN} ${OBJS}
+		${RM} $(OBJS) $(BIN)
 
 rebuild:	clean all
 

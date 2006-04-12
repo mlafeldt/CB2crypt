@@ -1,5 +1,5 @@
 /*
- * resource.h -- IDs to use with resource script "resource.res"
+ * resource.h -- IDs to use with resource file "resource.res"
  *
  * Copyright (C) 2006 misfire
  * All rights reserved.
@@ -24,7 +24,7 @@
 #ifndef _RESOURCE_H_
 #define _RESOURCE_H_
 
-// IDs from resource script
+// IDs from resource file
 #define IDD_MAIN_DLG	"MAIN"
 #define IDI_LOCK	"LOCK"
 #define IDM_EDIT_IN	101
@@ -32,9 +32,10 @@
 #define IDM_DECRYPT	201
 #define IDM_ENCRYPT	202
 #define IDM_REFORMAT	203
-#define IDM_CLOSE	301
-#define IDM_CLEAR_IN	302
-#define IDM_CLEAR_OUT	303
+#define IDM_CLOSE	204
+#define IDM_CLEAR_IN	205
+#define IDM_CLEAR_OUT	206
+#define IDM_COMMON_V7	301
 #define IDM_SYS_ABOUT	401
 
 #endif /*_RESOURCE_H_*/

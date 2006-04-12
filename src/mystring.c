@@ -1,7 +1,7 @@
 /*
  * mystring.c -- Small library of string functions
  *
- * Copyright (C) 2004-2005 misfire
+ * Copyright (C) 2004-2006 misfire
  * All rights reserved.
  *
  * This file is part of CB2crypt, the CodeBreaker PS2 Crypto Program.
@@ -198,6 +198,19 @@ int IsEmptySubStr(const char *s, int count)
 {
 	while (count--) {
 		if (isgraph(*s++)) return FALSE;
+	}
+
+	return TRUE;
+}
+
+/*	int IsHexStr(const char *s);
+ *
+ *	IsHexStr() returns TRUE if all chars of s are hexadecimal.
+ */
+int IsHexStr(const char *s)
+{
+	while (*s) {
+		if (!isxdigit(*s++)) return FALSE;
 	}
 
 	return TRUE;

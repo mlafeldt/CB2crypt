@@ -27,14 +27,26 @@
 typedef signed char s8;
 typedef signed short s16;
 typedef signed int s32;
-typedef signed long long s64; // ISO C99
 
 typedef unsigned char u8;
 typedef unsigned short u16;
 typedef unsigned int u32;
-typedef unsigned long long u64; // ISO C99
 
-#define TRUE	1
-#define FALSE	0
+// Support for 64-bit integers
+#ifdef __GNUC__
+	// ISO C99
+	typedef signed long long s64;
+	typedef unsigned long long u64;
+#else
+	// MS
+	typedef signed __int64 s64;
+	typedef unsigned __int64 u64;
+#endif
+
+// Boolean values
+#ifndef TRUE
+	#define TRUE	1
+	#define FALSE	0
+#endif
 
 #endif /*_MYTYPES_H_*/

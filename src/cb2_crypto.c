@@ -23,6 +23,8 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "mytypes.h"
 #include "arcfour.h"
 #include "big_int_full.h"
@@ -250,12 +252,12 @@ u32 MulInverse(u32 word)
 
 	if (word == 1) return 1;
 
-	a2 = -word % word;
+	a2 = (0 - word) % word;
 	if (!a2) return 1;
 
 	t1 = 1;
 	a3 = word;
-	a0 = -(0xFFFFFFFF / word);
+	a0 = 0 - (0xFFFFFFFF / word);
 
 	do {
 		v0 = a3 / a2;
@@ -545,6 +547,17 @@ void CBReset(void)
 	// Clear flags
 	v7enc = 0;
 	v7init = 0;
+	beefcodf = 0;
+}
+
+/*
+ * Set common CB V7 encryption (B4336FA9 4DFEFB79) which is used by CMGSCCC.com
+ */
+void CBSetCommonV7(void)
+{
+	v7enc = 1;
+	CB7Beefcode(1, 0);
+	v7init = 1;
 	beefcodf = 0;
 }
 

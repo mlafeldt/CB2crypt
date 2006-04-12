@@ -39,6 +39,7 @@ int CB7SelfTest(void);
 
 /* All versions */
 void CBReset(void);
+void CBSetCommonV7(void);
 void CBEncryptCode(u32 *addr, u32 *val);
 void CBDecryptCode(u32 *addr, u32 *val);
 

@@ -1,7 +1,7 @@
 /*
  * mystring.h -- Small library of string functions
  *
- * Copyright (C) 2004-2005 misfire
+ * Copyright (C) 2004-2006 misfire
  * All rights reserved.
  *
  * This file is part of CB2crypt, the CodeBreaker PS2 Crypto Program.
@@ -36,9 +36,11 @@
 
 // White-Space Characters
 #define TAB	0x09	// Horizontal tab
-#define LF	0x0A	// Line feed (New line)
+#define LF	0x0A	// Line feed
 #define CR	0x0D	// Carriage return
 #define SPACE	0x20
+
+#define NEWLINE	"\r\n"
 
 /* Declarations */
 
@@ -53,6 +55,7 @@ int _isascii(int c);
 int IsCmtStr(const char *s);
 int IsEmptyStr(const char *s);
 int IsEmptySubStr(const char *s, int count);
+int IsHexStr(const char *s);
 int IsPrintStr(const char *s);
 
 #endif /*_MYSTRING_H_*/
