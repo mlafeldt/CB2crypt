@@ -14,6 +14,15 @@ CodeBreaker PS2, including version 7 or higher.
    Version history
 ---===============---
 
+v1.11 (Apr 18 2006)
+* A small parser upgrade:
+  Lines are no longer parsed from left to right, but from right to left.
+  This way, such lines are now processed correctly:
+     1st place Set at 99999998   8D39AD57 23332B61
+  Decrypted output:
+     1st place Set at 99999998
+     205EC200 05F5E0FE
+
 v1.1 (Apr 13 2006)
 * Significantly improved the parser functionality.
   Now you can directly copy and paste the codes from CMGSCCC.com
@@ -56,11 +65,11 @@ Let's start with what each button does:
 
 "Clear" (right site) - Clears the output dialog box.
 
-"Decrypt" - Reformats and decrypts all codes from the input box. The result is
-displayed in the output box.
+"Decrypt" - Reformats the text and decrypts all codes from the input box. The
+result is displayed in the output box.
 
-"Encrypt" - Reformats and encrypts all codes from the input box. The result is
-displayed in the output box.
+"Encrypt" - Reformats the text and encrypts all codes from the input box. The
+result is displayed in the output box.
 
 "Reformat only" - Only reformats the text from the input box. The result is
 displayed in the output box.

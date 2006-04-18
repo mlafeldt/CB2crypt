@@ -38,7 +38,7 @@
 
 // Application's name and current version
 #define APP_NAME	"CB2crypt"
-#define APP_VERSION	"1.1"
+#define APP_VERSION	"1.11"
 
 // Title bar text for main window
 #define TITLEBAR_TEXT	APP_NAME" v"APP_VERSION
@@ -52,6 +52,10 @@
 #define TEXTSIZE	(32*1024) // 32k
 
 // Code parser defines
+
+// Parse line from left to right or from right to left
+#define PARSE_RIGHT_LEFT
+
 #define NUM_DIGITS_OCTET	8
 #define NUM_DIGITS_CODE		(NUM_DIGITS_OCTET*2)
 
@@ -181,7 +185,7 @@ int ParseText(int mode)
 			while (p != NULL) {
 				tok[toknum].str = p;
 				tok[toknum].type = GetTokenType(p);
-
+#ifndef PARSE_RIGHT_LEFT // Parse line from left to right
 				// Handle cheat code
 				if (tok[toknum].type == TOK_HEXOCTET) {
 					if (ctrl) {
@@ -190,7 +194,7 @@ int ParseText(int mode)
 						ctrl = 0;
 					} else ctrl = 1;
 				} else ctrl = 0;
-
+#endif
 				// Allocate more tokens if necessary
 				if (++toknum == tokmax) {
 					tokmax += TOK_STEP_NUM;
@@ -201,7 +205,18 @@ int ParseText(int mode)
 				// Next token
 				p = strtok(NULL, TOK_DELIMITER);
 			}
-
+#ifdef PARSE_RIGHT_LEFT // Parse line from right to left
+			ctrl = 0;
+			for (i = (toknum-1); i >= 0; i--) {
+				if (tok[i].type == TOK_HEXOCTET) {
+					if (ctrl) {
+						tok[i].type = TOK_CODEADDR;
+						tok[i+1].type = TOK_CODEVAL;
+						ctrl = 0;
+					} else ctrl = 1;
+				} else ctrl = 0;
+			}
+#endif
 			// Process tokens, reassemble text
 			ctrl = 0;
 			i = 0;
