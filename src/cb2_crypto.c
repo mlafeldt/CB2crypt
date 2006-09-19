@@ -207,7 +207,7 @@ const u64 rsa_dec_key = 11;
  *	  = p*q*r, only single prime factors
  *
  *	phi(n) = phi(p*q*r)
- *	       = phi(p) * phi(q) * phi(r), phi(p)= p - 1
+ *	       = phi(p) * phi(q) * phi(r), phi(p) = p - 1
  *	       = (p-1)*(q-1)*(r-1)
  *	       = (5-1) * (2551-1) * (1446236305269271-1)
  *	       = 4 * 2550 * 1446236305269270

@@ -34,28 +34,20 @@
 /* Defines */
 
 // Set debug mode
-//#define DEBUG
+//#define _DEBUG
 
 // Application's name and current version
-#define APP_NAME	"CB2crypt"
-#define APP_VERSION	"1.11"
+#define APP_NAME		"CB2crypt"
+#define APP_VERSION		"1.2"
 
 // Title bar text for main window
-#define TITLEBAR_TEXT	APP_NAME" v"APP_VERSION
-
-// Text for "About" message box
-#define ABOUT_TEXT	"CodeBreaker PS2 Crypto Program v"APP_VERSION"\n\n" \
-			"Copyright (C) 2006 misfire\n\n" \
-			"misfire@xploderfreax.de"
+#define TITLEBAR_TEXT		APP_NAME" v"APP_VERSION
 
 // Max text size for edit boxes
-#define TEXTSIZE	(32*1024) // 32k
+// FIXME: Win98/ME can only handle ~30k
+#define TEXTSIZE		(32*1024) // 32k
 
 // Code parser defines
-
-// Parse line from left to right or from right to left
-#define PARSE_RIGHT_LEFT
-
 #define NUM_DIGITS_OCTET	8
 #define NUM_DIGITS_CODE		(NUM_DIGITS_OCTET*2)
 
@@ -68,13 +60,12 @@ typedef struct {
 } token_t;
 
 // Token types
-enum {
-	TOK_STRING,
-	TOK_HEXOCTET,
-	TOK_CODE,
-	TOK_CODEADDR,
-	TOK_CODEVAL
-};
+#define TOK_WILDCARD		(1 << 0)
+#define TOK_STRING		(1 << 1)
+#define TOK_HEXOCTET		(1 << 2)
+#define TOK_CODE		(1 << 3) // Address and value, w/o space
+#define TOK_CODEADDR		(1 << 4)
+#define TOK_CODEVAL		(1 << 5)
 
 // Different modes for ParseText()
 enum {
@@ -83,48 +74,55 @@ enum {
 	MODE_REFORMAT
 };
 
+// Macro to convert a hex string into u32
+#define STR_TO_U32(s, u)	sscanf(s, "%08X", u)
+
 /* Global variables */
 
 // Flag: Use common V7 encryption?
 int v7common = 0;
 
-// Win32 stuff
-HWND hWindow;
-HICON iWindow;
-HFONT hFont, hNewFont;
-HMENU hMenu;
-
 /* Local function prototypes */
 
-BOOL CALLBACK MainDlg(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
+int MsgBox(HWND hwnd, UINT uType, const char *szFormat, ...);
+LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
+BOOL CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+BOOL CALLBACK AboutDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
 /* Function definitions */
 
+/*
+ * Returns the type of a string (token).
+ */
 int GetTokenType(const char *s)
 {
-	int slen;
+	int i, len = strlen(s);
 
-	if (IsHexStr(s)) {
-		slen = strlen(s);
-		if (slen == NUM_DIGITS_OCTET)
-			return TOK_HEXOCTET;
-		else if (slen == NUM_DIGITS_CODE)
-			return TOK_CODE;
+	if ((len == NUM_DIGITS_OCTET) || (len == NUM_DIGITS_CODE)) {
+		if (IsHexStr(s))
+			return (len == NUM_DIGITS_OCTET) ? TOK_HEXOCTET : TOK_CODE;
+
+		// Wildcard?
+		for (i = 0; i < len; i++) {
+			// "?" is only allowed in code value
+			if ((len == NUM_DIGITS_OCTET) || (i >= NUM_DIGITS_OCTET)) {
+				if (!isxdigit(s[i]) && (s[i] != '?'))
+					return TOK_STRING;
+			} else if (!isxdigit(s[i]))
+					return TOK_STRING;
+		}
+
+		return ((len == NUM_DIGITS_OCTET) ? TOK_HEXOCTET : TOK_CODE) | TOK_WILDCARD;
 	}
 
 	return TOK_STRING;
 }
 
-void GetCheatCode(const char *paddr, const char *pval, u32 *code)
-{
-	sscanf(paddr, "%08X", &code[0]);
-	sscanf(pval,  "%08X", &code[1]);
-}
-
 /*
- * Parses the input text for codes.
+ * Parses the text from the input dialog box for codes, processes them and
+ * displays the result in the output dialog box.
  */
-int ParseText(int mode)
+int ParseText(HWND hwnd, int mode)
 {
 	token_t *tok;
 	int toknum, tokmax = TOK_STEP_NUM;
@@ -134,8 +132,8 @@ int ParseText(int mode)
 	char codestr[NUM_DIGITS_CODE+2]; // incl. space and NUL
 	u32 code[2];
 	int i, ctrl, linelen;
-#ifdef DEBUG
-	FILE *fp;
+#ifdef _DEBUG
+	FILE *fp = fopen("tokens.dbg", "w");
 #endif
 	if (v7common)
 		CBSetCommonV7();
@@ -148,27 +146,19 @@ int ParseText(int mode)
 	memset(textin, 0, sizeof(textin));
 	memset(textout, 0, sizeof(textout));
 	memset(codestr, 0, sizeof(codestr));
-	SetDlgItemText(hWindow, IDM_EDIT_OUT, "");
+	SetDlgItemText(hwnd, IDM_EDIT_OUT, "");
 
 	// Get text from dialog box
-	//i = GetDlgItemText(hWindow, IDM_EDIT_IN, textin, TEXTSIZE); // Weird results under Win98?
-	GetDlgItemText(hWindow, IDM_EDIT_IN, textin, TEXTSIZE+1);
-	i = strlen(textin);
-	if (!i) {
-		MessageBox(hWindow, "You havn't entered any codes.",
-			APP_NAME, MB_OK | MB_ICONINFORMATION | MB_APPLMODAL);
+	//i = GetDlgItemText(hwnd, IDM_EDIT_IN, textin, TEXTSIZE); // Weird results under Win98?
+	GetDlgItemText(hwnd, IDM_EDIT_IN, textin, TEXTSIZE+1);
+	if (!(i = strlen(textin))) {
+		MsgBox(hwnd, MB_OK | MB_ICONINFORMATION, "You havn't entered any codes.");
 		return -2;
 	}
 
-	// Append CR, LF and NUL
-	textin[i] = NUL;
+	// Append newline
 	strcat(textin, NEWLINE);
 
-#ifdef DEBUG
-	fp = fopen("dbg-in.bin", "wb");
-	fwrite(textin, sizeof(textin), 1, fp);
-	fclose(fp);
-#endif
 	// Parse text
 	s = textin;
 	while (*s) {
@@ -177,24 +167,13 @@ int ParseText(int mode)
 		if (!IsEmptySubStr(s, linelen)) {
 			s[linelen] = NUL;
 
-			// Get all tokens
-			ctrl = 0;
+			// Get all tokens of the current line
 			toknum = 0;
 			p = strtok(s, TOK_DELIMITER);
-
 			while (p != NULL) {
 				tok[toknum].str = p;
 				tok[toknum].type = GetTokenType(p);
-#ifndef PARSE_RIGHT_LEFT // Parse line from left to right
-				// Handle cheat code
-				if (tok[toknum].type == TOK_HEXOCTET) {
-					if (ctrl) {
-						tok[toknum-1].type = TOK_CODEADDR;
-						tok[toknum].type = TOK_CODEVAL;
-						ctrl = 0;
-					} else ctrl = 1;
-				} else ctrl = 0;
-#endif
+
 				// Allocate more tokens if necessary
 				if (++toknum == tokmax) {
 					tokmax += TOK_STEP_NUM;
@@ -205,30 +184,43 @@ int ParseText(int mode)
 				// Next token
 				p = strtok(NULL, TOK_DELIMITER);
 			}
-#ifdef PARSE_RIGHT_LEFT // Parse line from right to left
-			ctrl = 0;
+
+			// Parse line from right to left
+			ctrl = 0; // Preceding token type
 			for (i = (toknum-1); i >= 0; i--) {
-				if (tok[i].type == TOK_HEXOCTET) {
-					if (ctrl) {
-						tok[i].type = TOK_CODEADDR;
-						tok[i+1].type = TOK_CODEVAL;
-						ctrl = 0;
-					} else ctrl = 1;
-				} else ctrl = 0;
+				if ((tok[i].type & TOK_HEXOCTET) && (ctrl & TOK_HEXOCTET)) {
+					tok[i].type = TOK_CODEADDR | (ctrl & TOK_WILDCARD);
+					tok[i+1].type = TOK_CODEVAL | (ctrl & TOK_WILDCARD);
+				}
+				ctrl = tok[i].type;
 			}
-#endif
+
 			// Process tokens, reassemble text
-			ctrl = 0;
+			ctrl = 0; // 1 for newline
 			i = 0;
 			while (i < toknum) {
-				if ((tok[i].type == TOK_CODE) || (tok[i].type == TOK_CODEADDR)) {
-					if (tok[i].type == TOK_CODE) {
-						GetCheatCode(tok[i].str, tok[i].str + NUM_DIGITS_OCTET, code);
-					} else {
-						GetCheatCode(tok[i].str, tok[i+1].str, code);
-						i++;
+#ifdef _DEBUG
+				fprintf(fp, "%i: %s\n", tok[i].type, tok[i].str);
+				if (tok[i].type & TOK_CODEADDR)
+					fprintf(fp, "%i: %s\n", tok[i+1].type, tok[i+1].str);
+#endif
+				if ((tok[i].type & TOK_CODE) || (tok[i].type & TOK_CODEADDR)) {
+					// Convert code address
+					STR_TO_U32(tok[i].str, &code[0]);
+
+					// Convert code value
+					switch (tok[i].type) {
+						case TOK_CODE:
+							STR_TO_U32(tok[i].str + NUM_DIGITS_OCTET, &code[1]);
+							break;
+						case TOK_CODEADDR:
+							STR_TO_U32(tok[i+1].str, &code[1]);
+							break;
+						default:
+							code[1] = 0; // Whatever
 					}
 
+					// Decrypt/encrypt code
 					switch (mode) {
 						case MODE_DECRYPT:
 							CBDecryptCode(&code[0], &code[1]);
@@ -241,153 +233,518 @@ int ParseText(int mode)
 							break;
 					}
 
-					sprintf(codestr, "%08X %08X", code[0], code[1]);
+					// Format code address for output
+					sprintf(codestr, "%08X ", code[0]);
 
+					// Format code value
+					if (tok[i].type & TOK_WILDCARD) {
+						if (tok[i].type & TOK_CODE)
+							p = tok[i].str + NUM_DIGITS_OCTET;
+						else // TOK_CODEADDR
+							p = tok[++i].str;
+						StrMakeUpper(p);
+						sprintf(&codestr[NUM_DIGITS_OCTET+1], "%s", p);
+					} else {
+						sprintf(&codestr[NUM_DIGITS_OCTET+1], "%08X", code[1]);
+						if (tok[i].type & TOK_CODEADDR) i++;
+					}
+
+					// Append code to output
 					if (i > 1) strcat(textout, NEWLINE);
 					strcat(textout, codestr);
 					ctrl = 1;
 				} else {
+					// Append string to output
 					if (ctrl) {
 						strcat(textout, NEWLINE);
 						ctrl = 0;
 					} else if (i > 0) strcat(textout, " ");
 					strcat(textout, tok[i].str);
 				}
-
-				//printf("%i: %s\n", tok[i].type, tok[i].str);
 				i++;
 			}
-
 			strcat(textout, NEWLINE);
 		}
-
 		// Next line
 		s += linelen + 2;
 	}
 
-#ifdef DEBUG
-	fp = fopen("dbg-out.bin", "wb");
-	fwrite(textout, sizeof(textout), 1, fp);
+#ifdef _DEBUG
 	fclose(fp);
 #endif
 	// Display result
-	SetDlgItemText(hWindow, IDM_EDIT_OUT, textout);
+	SetDlgItemText(hwnd, IDM_EDIT_OUT, textout);
 
 	free(tok);
 
 	return 0;
 }
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+/*
+ * A MessageBox() replacement with format string support.
+ */
+int MsgBox(HWND hwnd, UINT uType, const char *szFormat, ...)
 {
-	MSG msg;
-	RECT wndRect, dskRect;
-	int w, h;
+	char buf[1024];
+	va_list ap;
 
-	// Create main dialog
-	hWindow = CreateDialog(hInstance, IDD_MAIN_DLG, NULL, MainDlg);
-	if (hWindow == NULL) {
-		MessageBox(NULL, "Could not create main dialog", APP_NAME, MB_ICONERROR | MB_OK);
-		return 0;
+	va_start(ap, szFormat);
+	vsprintf(buf, szFormat, ap);
+	va_end(ap);
+
+	return MessageBox(hwnd, buf, APP_NAME, uType);
+}
+
+/*
+ * Initializes the OPENFILENAME structure.
+ */
+void InitOfn(OPENFILENAME *ofn, HWND hwnd, char *szFileName, char *szTitleName)
+{
+	static const char szFilter[] = \
+		"Text Files (*.txt)\0*.txt\0" \
+		"All Files (*.*)\0*.*\0" \
+		"\0";
+
+	ofn->lStructSize	= sizeof(OPENFILENAME);
+	ofn->hwndOwner		= hwnd;
+	ofn->hInstance		= NULL;
+	ofn->lpstrFilter	= szFilter;
+	ofn->lpstrCustomFilter	= NULL;
+	ofn->nMaxCustFilter	= 0;
+	ofn->nFilterIndex	= 0;
+	ofn->lpstrFile		= szFileName;
+	ofn->nMaxFile		= MAX_PATH;
+	ofn->lpstrFileTitle	= szTitleName;
+	ofn->nMaxFileTitle	= MAX_PATH;
+	ofn->lpstrInitialDir	= NULL;
+	ofn->lpstrTitle		= NULL;
+	ofn->Flags		= 0;
+	ofn->nFileOffset	= 0;
+	ofn->nFileExtension	= 0;
+	ofn->lpstrDefExt	= "txt";
+	ofn->lCustData		= 0L;
+	ofn->lpfnHook		= NULL;
+	ofn->lpTemplateName	= NULL;
+}
+
+/*
+ * Creates a "Open" dialog box.
+ */
+BOOL FileOpenDlg(OPENFILENAME *ofn)
+{
+     ofn->Flags = OFN_FILEMUSTEXIST | OFN_HIDEREADONLY | OFN_NOCHANGEDIR;
+
+     return GetOpenFileName(ofn);
+}
+
+/*
+ * Creates a "Save" dialog box.
+ */
+BOOL FileSaveDlg(OPENFILENAME *ofn)
+{
+     ofn->Flags = OFN_OVERWRITEPROMPT;
+
+     return GetSaveFileName(ofn);
+}
+
+/*
+ * Loads the contents of a text file into the input dialog box.
+ */
+BOOL LoadTextFile(HWND hwnd, char *szFileName)
+{
+	char *buf;
+	DWORD dwBytesRead;
+	HANDLE hFile;
+	int iFileLength, ret;
+
+	// Open file for reading
+	hFile = CreateFile(szFileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+	if (hFile == INVALID_HANDLE_VALUE) {
+		MsgBox(hwnd, MB_ICONERROR | MB_OK, "Can't read from file \"%s\"", szFileName);
+		return FALSE;
 	}
 
-	// Load and set dialog icons
-	iWindow = LoadIcon(hInstance, IDI_LOCK);
-	SendMessage(hWindow, WM_SETICON, ICON_BIG, (LPARAM)iWindow);
-	SendMessage(hWindow, WM_SETICON, ICON_SMALL, (LPARAM)iWindow);
+	// Check file size
+	iFileLength = GetFileSize(hFile, NULL);
+	if (iFileLength > TEXTSIZE) {
+		ret = MsgBox(hwnd, MB_ICONQUESTION | MB_YESNO,
+			"%s can only load the first %i bytes of this file (%i bytes total).\n\nOpen anyway?",
+			APP_NAME, TEXTSIZE, iFileLength);
+		if (ret == IDNO) {
+			CloseHandle(hFile);
+			return FALSE;
+		}
+		iFileLength = TEXTSIZE;
+	}
 
-	// Change title bar to include version number
-	SetWindowText(hWindow, TITLEBAR_TEXT);
+	// Allocate memory
+	buf = (char*)malloc(iFileLength + 1);
+	if (buf == NULL) {
+		MsgBox(hwnd, MB_ICONERROR | MB_OK, "Unable to allocate %i bytes.", iFileLength + 1);
+		CloseHandle(hFile);
+		return FALSE;
+	}
 
-	// Add system menu "About"
-	hMenu = GetSystemMenu(hWindow, FALSE);
-	AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
-	AppendMenu(hMenu, MF_STRING, IDM_SYS_ABOUT, "About...");
+	// Read from file into buffer
+	ReadFile(hFile, buf, iFileLength, &dwBytesRead, NULL);
+	CloseHandle(hFile);
 
-	// Center dialog on screen
-	GetWindowRect(hWindow, &wndRect);
-	GetWindowRect(GetDesktopWindow(), &dskRect);
-	w = wndRect.right - wndRect.left;
-	h = wndRect.bottom - wndRect.top;
-	MoveWindow(hWindow, (dskRect.right/2)-(w/2), (dskRect.bottom/2)-(h/2), w, h, TRUE);
+	// Set text in input dialog box
+	buf[iFileLength] = '\0';
+	SetDlgItemText(hwnd, IDM_EDIT_IN, buf);
+	free(buf);
 
-	// Display dialog
-	ShowWindow(hWindow, nCmdShow);
-	UpdateWindow(hWindow);
+	return TRUE;
+}
+
+/*
+ * Saves the text in the output dialog box to a text file.
+ */
+BOOL SaveTextFile(HWND hwnd, char *szFileName)
+{
+	char *buf;
+	DWORD dwBytesWritten;
+	HANDLE hFile;
+	HWND hCtrl;
+	int iLength;
+
+	// Open file for writing
+	hFile = CreateFile(szFileName, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
+	if (hFile == INVALID_HANDLE_VALUE) {
+		MsgBox(hwnd, MB_ICONERROR | MB_OK, "Can't write to file \"%s\"", szFileName);
+		return FALSE;
+	}
+
+	// Get size of output dialog box text
+	hCtrl = GetDlgItem(hwnd, IDM_EDIT_OUT);
+	iLength = GetWindowTextLength(hCtrl);
+
+	// Allocate memory
+	buf = (char*)malloc(iLength + 1);
+	if (buf == NULL) {
+		MsgBox(hwnd, MB_ICONERROR | MB_OK, "Unable to allocate %i bytes.", iLength + 1);
+		CloseHandle(hFile);
+		return FALSE;
+	}
+
+	// Write text to file
+	GetWindowText(hCtrl, buf, iLength + 1);
+	WriteFile(hFile, buf, iLength, &dwBytesWritten, NULL);
+	CloseHandle(hFile);
+	free(buf);
+
+	return TRUE;
+}
+
+/*
+ * Initializes the application.
+ */
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine, int iCmdShow)
+{
+	HACCEL hAccel;
+	HWND hwnd;
+	MSG msg;
+	WNDCLASS wndclass;
+
+	// Register custom dialog box class
+	wndclass.style		= CS_HREDRAW | CS_VREDRAW;
+	wndclass.lpfnWndProc	= WndProc;
+	wndclass.cbClsExtra	= 0;
+	wndclass.cbWndExtra	= DLGWINDOWEXTRA;
+	wndclass.hInstance	= hInstance;
+	wndclass.hIcon		= LoadIcon(hInstance, IDM_ICON);
+	wndclass.hCursor	= LoadCursor(NULL, IDC_ARROW);
+	wndclass.hbrBackground	= NULL;
+	wndclass.lpszMenuName	= IDM_MENU;
+	wndclass.lpszClassName	= APP_NAME;
+	RegisterClass(&wndclass);
+
+	// Create main dialog
+	hwnd = CreateDialog(hInstance, IDD_MAIN, NULL, MainDlgProc);
+	if (hwnd == NULL) {
+		MsgBox(NULL, MB_ICONERROR | MB_OK, "Could not create main dialog.");
+		return 0;
+	}
+	ShowWindow(hwnd, iCmdShow);
+
+	// Load shortcuts
+	hAccel = LoadAccelerators(hInstance, IDM_ACCEL);
 
 	// Message loop
 	while (GetMessage(&msg, NULL, 0, 0)) {
-		if ((hWindow == NULL) || !IsDialogMessage(hWindow, &msg)) {
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
+		if (!TranslateAccelerator(hwnd, hAccel, &msg)) {
+			if (!IsDialogMessage(hwnd, &msg)) {
+				TranslateMessage(&msg);
+				DispatchMessage(&msg);
+			}
 		}
 	}
 
 	return msg.wParam;
 }
 
-BOOL CALLBACK MainDlg(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
+/*
+ * The window procedure.
+ */
+LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	LOGFONT lf;
+	HMENU hMenu;
+	static HINSTANCE hInst;
+	static HWND hCtrl;
+	static OPENFILENAME ofn;
+	static char szFileName[MAX_PATH];
+	static char szTitleName[MAX_PATH];
+	int iSelBeg, iSelEnd, iEnable;
 
-	switch (uMsg) {
-		case WM_INITDIALOG:
-			// Setup font
-			hFont = (HFONT)SendMessage(hwndDlg, WM_GETFONT, 0, 0);
-			GetObject(hFont, sizeof(LOGFONT), &lf);
-			strcpy(lf.lfFaceName, "Courier");
-			hNewFont = CreateFontIndirect(&lf);
-			SendDlgItemMessage(hwndDlg, IDM_EDIT_IN, WM_SETFONT, (WPARAM)hNewFont, FALSE);
-			SendDlgItemMessage(hwndDlg, IDM_EDIT_OUT, WM_SETFONT, (WPARAM)hNewFont, FALSE);
+	switch (message) {
+		case WM_CREATE:
+			hInst = ((LPCREATESTRUCT)lParam)->hInstance;
 
-			// Set text limits
-			SendDlgItemMessage(hwndDlg, IDM_EDIT_IN, EM_SETLIMITTEXT, TEXTSIZE, 0);
-			break;
+			// Change title bar to include version number
+			SetWindowText(hwnd, TITLEBAR_TEXT);
 
-		case WM_COMMAND:
-			switch (HIWORD(wParam)) {
-				case BN_CLICKED:
-					switch (LOWORD(wParam)) {
-						case IDM_DECRYPT:
-							ParseText(MODE_DECRYPT);
-							break;
-						case IDM_ENCRYPT:
-							ParseText(MODE_ENCRYPT);
-							break;
-						case IDM_REFORMAT:
-							ParseText(MODE_REFORMAT);
-							break;
-						case IDM_CLOSE:
-							PostQuitMessage(0);
-							break;
-						case IDM_CLEAR_IN:
-							SetDlgItemText(hwndDlg, IDM_EDIT_IN, "");
-							break;
-						case IDM_CLEAR_OUT:
-							SetDlgItemText(hwndDlg, IDM_EDIT_OUT, "");
-							break;
-						case IDM_COMMON_V7:
-							v7common ^= 1;
-							break;
+			// Add system menu "About"
+			hMenu = GetSystemMenu(hwnd, FALSE);
+			AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
+			AppendMenu(hMenu, MF_STRING, IDM_SYS_ABOUT, "About...");
+
+			// Init OPENFILENAME
+			InitOfn(&ofn, hwnd, szFileName, szTitleName);
+			return 0;
+
+/*		case WM_SETFOCUS:
+			SetFocus(GetDlgItem(hwnd, IDM_EDIT_IN)); // Doesn't work?
+			return 0;
+*/
+		case WM_INITMENUPOPUP:
+			switch (LOWORD(lParam)) {
+				case 0: // Submenu "File"
+					// Enable "Save as text file" if there is any text to save
+					EnableMenuItem((HMENU)wParam, IDM_MENU_SAVE,
+						GetWindowTextLength(GetDlgItem(hwnd, IDM_EDIT_OUT)) ? MF_ENABLED : MF_GRAYED);
+					break;
+
+				case 1: // Submenu "Edit"
+					hCtrl = GetFocus();
+					if (hCtrl == GetDlgItem(hwnd, IDM_EDIT_IN)) { // Input box has focus
+						// Enable "Undo" if edit-control operation can be undone
+						EnableMenuItem((HMENU)wParam, IDM_MENU_UNDO,
+							SendMessage(hCtrl, EM_CANUNDO, 0, 0) ? MF_ENABLED : MF_GRAYED);
+
+						// Enable "Paste" if clipboard contains text
+						EnableMenuItem((HMENU)wParam, IDM_MENU_PASTE,
+							IsClipboardFormatAvailable (CF_TEXT) ? MF_ENABLED : MF_GRAYED);
+
+						// Enable "Cut", "Copy" and "Delete" if some text is selected
+						SendMessage(hCtrl, EM_GETSEL, (WPARAM)&iSelBeg, (LPARAM)&iSelEnd);
+						iEnable = (iSelBeg != iSelEnd) ? MF_ENABLED : MF_GRAYED;
+						EnableMenuItem((HMENU)wParam, IDM_MENU_CUT, iEnable);
+						EnableMenuItem((HMENU)wParam, IDM_MENU_COPY, iEnable);
+						EnableMenuItem((HMENU)wParam, IDM_MENU_DEL, iEnable);
+
+						// Enable "Select All" and "Clear" if there is any text
+						iEnable = GetWindowTextLength(hCtrl) ? MF_ENABLED : MF_GRAYED;
+						EnableMenuItem((HMENU)wParam, IDM_MENU_SELECT_ALL, iEnable);
+						EnableMenuItem((HMENU)wParam, IDM_MENU_CLEAR, iEnable);
+
+					} else if (hCtrl == GetDlgItem(hwnd, IDM_EDIT_OUT)) { // Output box has focus
+						// Enable "Copy" if some text is selected
+						SendMessage(hCtrl, EM_GETSEL, (WPARAM)&iSelBeg, (LPARAM)&iSelEnd);
+						iEnable = (iSelBeg != iSelEnd) ? MF_ENABLED : MF_GRAYED;
+						EnableMenuItem((HMENU)wParam, IDM_MENU_COPY, iEnable);
+
+						// Enable "Select All" and "Clear" if there is any text
+						iEnable = GetWindowTextLength(hCtrl) ? MF_ENABLED : MF_GRAYED;
+						EnableMenuItem((HMENU)wParam, IDM_MENU_SELECT_ALL, iEnable);
+						EnableMenuItem((HMENU)wParam, IDM_MENU_CLEAR, iEnable);
+
+						// Disable the other items
+						EnableMenuItem((HMENU)wParam, IDM_MENU_UNDO, MF_GRAYED);
+						EnableMenuItem((HMENU)wParam, IDM_MENU_CUT, MF_GRAYED);
+						EnableMenuItem((HMENU)wParam, IDM_MENU_PASTE, MF_GRAYED);
+						EnableMenuItem((HMENU)wParam, IDM_MENU_DEL, MF_GRAYED);
+					} else {
+						// Disable all menu items
+						EnableMenuItem((HMENU)wParam, IDM_MENU_UNDO, MF_GRAYED);
+						EnableMenuItem((HMENU)wParam, IDM_MENU_CUT, MF_GRAYED);
+						EnableMenuItem((HMENU)wParam, IDM_MENU_COPY, MF_GRAYED);
+						EnableMenuItem((HMENU)wParam, IDM_MENU_PASTE, MF_GRAYED);
+						EnableMenuItem((HMENU)wParam, IDM_MENU_DEL, MF_GRAYED);
+						EnableMenuItem((HMENU)wParam, IDM_MENU_SELECT_ALL, MF_GRAYED);
+						EnableMenuItem((HMENU)wParam, IDM_MENU_CLEAR, MF_GRAYED);
 					}
 					break;
+
+				case 2: // Submenu "Codes"
+					iEnable = GetWindowTextLength(GetDlgItem(hwnd, IDM_EDIT_IN)) ? MF_ENABLED : MF_GRAYED;
+					EnableMenuItem((HMENU)wParam, IDM_MENU_DECRYPT, iEnable);
+					EnableMenuItem((HMENU)wParam, IDM_MENU_ENCRYPT, iEnable);
+					EnableMenuItem((HMENU)wParam, IDM_MENU_REFORMAT, iEnable);
+					break;
+			}
+			return 0;
+
+		case WM_COMMAND:
+			// Set focus to input box
+			switch (LOWORD(wParam)) {
+				case IDM_DECRYPT:
+				case IDM_ENCRYPT:
+				case IDM_REFORMAT:
+				case IDM_CLEAR_IN:
+				case IDM_CLEAR_OUT:
+				case IDM_MENU_OPEN:
+					SetFocus(GetDlgItem(hwnd, IDM_EDIT_IN));
+			}
+
+			switch (LOWORD(wParam)) {
+				case IDM_DECRYPT:
+				case IDM_MENU_DECRYPT:
+					ParseText(hwnd, MODE_DECRYPT);
+					return 0;
+
+				case IDM_ENCRYPT:
+				case IDM_MENU_ENCRYPT:
+					ParseText(hwnd, MODE_ENCRYPT);
+					return 0;
+
+				case IDM_REFORMAT:
+				case IDM_MENU_REFORMAT:
+					ParseText(hwnd, MODE_REFORMAT);
+					return 0;
+
+				case IDM_CLOSE:
+				case IDM_MENU_EXIT:
+					PostQuitMessage(0);
+					return 0;
+
+				case IDM_CLEAR_IN:
+					SetDlgItemText(hwnd, IDM_EDIT_IN, "");
+					return 0;
+
+				case IDM_CLEAR_OUT:
+					SetDlgItemText(hwnd, IDM_EDIT_OUT, "");
+					return 0;
+
+				case IDM_MENU_CLEAR:
+					SetDlgItemText(hwnd, GetDlgCtrlID(hCtrl), "");
+					return 0;
+
+				case IDM_COMMON_V7:
+				case IDM_MENU_COMMON_V7:
+					v7common ^= 1;
+					CheckMenuItem(GetMenu(hwnd), IDM_MENU_COMMON_V7, v7common ? MF_CHECKED : MF_UNCHECKED);
+					if (LOWORD(wParam) == IDM_MENU_COMMON_V7)
+						CheckDlgButton(hwnd, IDM_COMMON_V7, v7common ? BST_CHECKED : BST_UNCHECKED);
+					return 0;
+
+				case IDM_MENU_OPEN:
+					if (FileOpenDlg(&ofn))
+						LoadTextFile(hwnd, szFileName);
+					return 0;
+
+				case IDM_MENU_SAVE:
+					if (FileSaveDlg(&ofn))
+						SaveTextFile(hwnd, szFileName);
+					return 0;
+
+				case IDM_MENU_UNDO:
+					SendMessage(hCtrl, WM_UNDO, 0, 0);
+					return 0;
+
+				case IDM_MENU_CUT:
+					SendMessage(hCtrl, WM_CUT, 0, 0);
+					return 0;
+
+				case IDM_MENU_COPY:
+					SendMessage(hCtrl, WM_COPY, 0, 0);
+					return 0;
+
+				case IDM_MENU_PASTE:
+					SendMessage(hCtrl, WM_PASTE, 0, 0);
+					return 0;
+
+				case IDM_MENU_DEL:
+					SendMessage(hCtrl, WM_CLEAR, 0, 0);
+					return 0;
+
+				case IDM_MENU_SELECT_ALL:
+					SendMessage(hCtrl, EM_SETSEL, 0, -1);
+					return 0;
+
+				case IDM_MENU_ABOUT:
+					DialogBox(hInst, IDD_ABOUTBOX, hwnd, AboutDlgProc);
+					return 0;
 			}
 			break;
 
 		case WM_SYSCOMMAND:
 			switch (LOWORD(wParam)) {
 				case IDM_SYS_ABOUT:
-					// Show "About" message box
-					MessageBox(hWindow, ABOUT_TEXT, "About",
-						MB_OK | MB_ICONINFORMATION | MB_APPLMODAL);
-					break;
+					DialogBox(hInst, IDD_ABOUTBOX, hwnd, AboutDlgProc);
+					return 0;
 			}
 			break;
 
 		case WM_CLOSE:
-		case WM_QUIT:
 			PostQuitMessage(0);
+			return 0;
+	}
+
+	// Not DefWindowProc()!
+	return DefDlgProc(hwnd, message, wParam, lParam);
+}
+
+/*
+ * Callback function for Main dialog.
+ */
+BOOL CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	LOGFONT lf;
+	HFONT hFont;
+
+	switch (message) {
+		case WM_INITDIALOG:
+			// Setup font
+			hFont = (HFONT)SendMessage(hDlg, WM_GETFONT, 0, 0);
+			GetObject(hFont, sizeof(LOGFONT), &lf);
+			strcpy(lf.lfFaceName, "Courier");
+			hFont = CreateFontIndirect(&lf);
+			SendDlgItemMessage(hDlg, IDM_EDIT_IN, WM_SETFONT, (WPARAM)hFont, FALSE);
+			SendDlgItemMessage(hDlg, IDM_EDIT_OUT, WM_SETFONT, (WPARAM)hFont, FALSE);
+
+			// Set text limit
+			SendDlgItemMessage(hDlg, IDM_EDIT_IN, EM_SETLIMITTEXT, TEXTSIZE, 0);
+			return TRUE;
+
+		// Other messages are processed by the window procedure.
+	}
+
+	return FALSE;
+}
+
+/*
+ * Callback function for About box.
+ */
+BOOL CALLBACK AboutDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	switch (message) {
+		case WM_INITDIALOG:
+			// Change text to include version number
+			SetDlgItemText(hDlg, IDC_APP_VERSION, APP_VERSION);
+			return TRUE;
+
+		case WM_COMMAND:
+			switch (LOWORD(wParam)) {
+				case IDOK:
+				case IDCANCEL:
+					EndDialog(hDlg, 0);
+					return TRUE;
+			}
 			break;
+
+		case WM_CLOSE:
+			EndDialog(hDlg, 0);
+			return TRUE;
 	}
 
 	return FALSE;

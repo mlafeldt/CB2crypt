@@ -1,5 +1,5 @@
 /*
- * mystring.h -- Small library of string functions
+ * mystring.c -- Small library of string functions (stripped)
  *
  * Copyright (C) 2004-2006 misfire
  * All rights reserved.
@@ -42,20 +42,11 @@
 
 #define NEWLINE	"\r\n"
 
-/* Declarations */
+/* Function declarations */
 
-char *AddStr(const char *s1, const char *s2);
 int IndexOfChr(const char *s, char c);
-int LastIndexOfChr(const char *s, char c);
-int MakePrintStr(char *s, char c);
-void RemCmtFromStr(char *s);
-int SetMaxStrLen(char *s, int max);
-int TrimStr(char *s);
-int _isascii(int c);
-int IsCmtStr(const char *s);
-int IsEmptyStr(const char *s);
+char *StrMakeUpper(char *s);
 int IsEmptySubStr(const char *s, int count);
 int IsHexStr(const char *s);
-int IsPrintStr(const char *s);
 
 #endif /*_MYSTRING_H_*/

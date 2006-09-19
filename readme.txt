@@ -14,6 +14,34 @@ CodeBreaker PS2, including version 7 or higher.
    Version history
 ---===============---
 
+v1.2 (Sep 19 2006)
+* Rewrote ParseText() to allow the use of the wildcard character "?" in code
+  values. Example:
+     Slot 1   1A7D6192 0000????
+  Decrypted output:
+     Slot 1
+     10754244 0000????
+  NOTE: It would be pointless to use the "?" character with V7 codes, as both
+  code address and code value get encrypted and depend on each other. So use
+  this feature with V1 codes only!
+* Rewrote most parts of the WinAPI code (added a window procedure, etc.)
++ Added a menu to the main dialog. The submenus are:
+     File: Load text file, Save as text file, Exit
+     Edit: Undo, Cut, Copy, Paste, Delete, Select all, Clear
+     Codes: Decrypt, Encrypt, Reformat only
+     Options: Use common V7 encryption
+     ?: About
+  With "File", you can now load and save text files. The "Edit" items affect the
+  input or the output dialog box, depending on the current keyboard focus.
++ Added key shortcuts for some of the menu items.
++ Added a "real" About box.
++ The keyboard focus is now automatically set to the input box if any button is
+  clicked.
+* Stripped unused stuff from the mystring library.
+* Renamed "CB2crypt-readme.txt" to "readme.txt".
+* Updated some sections in this readme.
++ Added the file "donate.txt". Please have a look at it.
+
 v1.11 (Apr 18 2006)
 * A small parser upgrade:
   Lines are no longer parsed from left to right, but from right to left.
@@ -181,7 +209,7 @@ encryption."
 To add user/competitor created codes to existing official V7 codes, you must do
 the following:
 
-Let's say you want to add a code to the game "Tiger Woods PGA Tour 2006", e.g.
+Let's say you want to add a code to the game "Tiger Woods PGA Tour 2006," e.g.
 
 Always Full Gamebreaker P1 (GS2V3-encrypted)
 2857957C FCE87A65
@@ -193,7 +221,7 @@ code decrypts to
 Always Full Gamebreaker P1 (raw)
 204D98B0 3F800000
 
-Then, determine the seed code by decrypting the official CB "Enable Code".
+Then, determine the seed code by decrypting the official CB "Enable Code."
 (It's most likely the first code line.)
 
 "Tiger Woods PGA Tour 2006"
@@ -204,7 +232,7 @@ B4336FA9 4DFEFB79
 C81AC878 32FCD351
 
 Decrypted:
-BEEFC0DE 00000000 ; This is the seed code, see chapter "Beefcode".
+BEEFC0DE 00000000 ; This is the seed code, see chapter "Beefcode."
 000FFFFE 0000015A
 000FFFFF 0000015A
 903DD9F8 00832021
@@ -268,14 +296,19 @@ Public License. Please see file COPYING for further information.
 I want to thank Parasyte for the MAXcrypt/GCNcrypt sources.
 Alexander Valyalkin for his great BIG_INT library.
 Steve Balogh for his Icon Library.
+DataRescue for IDA, the best disassembler around!
+hanimar for ps2dis.
 ps2dev.org for PS2SDK and the other open source projects.
 Deutsche Bank AG for CrypTool.
 O. Forster for the arithmetic interpreter ARIBAS.
 Prof. Dr. J. Seelaender for his lecture/thoughts on number theory.
-Bruce Schneier for his best seller book "Applied Cryptography".
+Bruce Schneier for his best seller book "Applied Cryptography."
+Charles Petzold for his excellent book "Programming Windows."
+Thanks to CMX for challenging me. ;)
+
 Greets to Nachbrenner and all the _real_ code hackers out there!
 
-Finally, thanks to CMX for challenging me. ;)
+And of course, many thanks to the people that donated so far. You rock!
 
 
 ---====---
@@ -284,8 +317,24 @@ Finally, thanks to CMX for challenging me. ;)
 
 misfire [AT] xploderfreax [DOT] de
 
-If you enjoy this software, please consider a PayPal donation to the email
+
+---=====---
+   Donation
+---========---
+
+If you enjoy this software, please consider a PayPal donation to the e-mail
 address above. Thank you.
+
+More information can be found in the file "donate.txt".
+
+
+---===---
+   Job
+---======---
+
+If you or your company are looking for a PS2 code hacker/low-level programmer,
+I am available for immediate contract work or other offers. My e-mail is the
+best way to contact me.
 
 
 ---======================---
