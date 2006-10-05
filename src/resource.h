@@ -61,5 +61,6 @@
 // About box
 #define IDD_ABOUTBOX		"ABOUTBOX"
 #define IDC_APP_VERSION		501
+#define IDC_EMAIL		502
 
 #endif /*_RESOURCE_H_*/

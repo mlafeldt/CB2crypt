@@ -14,6 +14,14 @@ CodeBreaker PS2, including version 7 or higher.
    Version history
 ---===============---
 
+v1.21 (Oct 5 2006)
+* The e-mail address in the About box is now a real URL.
+* Fixed a spelling mistake in a message box: "You haven't entered any codes."
+* cb2_crypto.c: Made global variables static.
+* Simplified the parser algorithm.
+* Added a CRC function to check the parser's work in debug mode.
+* Renamed "donate.txt" to "donation.txt".
+
 v1.2 (Sep 19 2006)
 * Rewrote ParseText() to allow the use of the wildcard character "?" in code
   values. Example:
@@ -322,10 +330,7 @@ misfire [AT] xploderfreax [DOT] de
    Donation
 ---========---
 
-If you enjoy this software, please consider a PayPal donation to the e-mail
-address above. Thank you.
-
-More information can be found in the file "donate.txt".
+If you like this software, please have a look at the file "donation.txt".
 
 
 ---===---

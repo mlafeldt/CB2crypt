@@ -36,7 +36,7 @@
  */
 
 // V1 seed tables
-const u32 seedtable[3][16] = {
+static const u32 seedtable[3][16] = {
 	{
 		0x0A0B8D9B, 0x0A0133F8, 0x0AF733EC, 0x0A15C574,
 		0x0A50AC20, 0x0A920FB9, 0x0A599F0B, 0x0A4AA0E3,
@@ -93,7 +93,7 @@ void CB1DecryptCode(u32 *addr, u32 *val)
  */
 
 // Default seed tables (1280 bytes total)
-const u8 defseeds[5][256] = {
+static const u8 defseeds[5][256] = {
 	{
 		0x84, 0x01, 0x21, 0xA4, 0xFA, 0x4D, 0x50, 0x8D, 0x75, 0x33, 0xC5, 0xF7, 0x4A, 0x6D, 0x7C, 0xA6,
 		0x1C, 0xF8, 0x40, 0x18, 0xA1, 0xB3, 0xA2, 0xF9, 0x6A, 0x19, 0x63, 0x66, 0x29, 0xAE, 0x10, 0x75,
@@ -187,13 +187,13 @@ const u8 defseeds[5][256] = {
 };
 
 // Default ARCFOUR key (20 bytes)
-const u32 defkey[5] = {
+static const u32 defkey[5] = {
 	0xD0DBA9D7, 0x13A0A96C, 0x80410DF0, 0x2CCDBE1F, 0xE570A86B
 };
 
 // RSA parameters
-const u64 rsa_modulus = 18446744073709551605ULL; // = 0xFFFFFFFFFFFFFFF5
-const u64 rsa_dec_key = 11;
+static const u64 rsa_modulus = 18446744073709551605ULL; // = 0xFFFFFFFFFFFFFFF5
+static const u64 rsa_dec_key = 11;
 /*
  * This is how I calculated the encryption key e from d:
  * (some number theory)
@@ -216,15 +216,15 @@ const u64 rsa_dec_key = 11;
  *	e = 11^(-1) mod 14751610313746554000
  *	e = 2682110966135737091
  */
-const u64 rsa_enc_key = 2682110966135737091ULL;
+static const u64 rsa_enc_key = 2682110966135737091ULL;
 
-u8 seeds[5][256];	// Current set of seeds
-u32 key[5];		// Current ARCFOUR key
-u32 oldkey[5];		// Backup of ARCFOUR key
-ARC4_CTX ctx;		// ARCFOUR context
-int v7enc;		// Flag: Use V7 encryption?
-int v7init;		// Flag: V7 encryption already initialized?
-int beefcodf;		// Flag: Is it BEEFC0DF?
+static u8 seeds[5][256];	// Current set of seeds
+static u32 key[5];		// Current ARCFOUR key
+static u32 oldkey[5];		// Backup of ARCFOUR key
+static ARC4_CTX ctx;		// ARCFOUR context
+static int v7enc;		// Flag: Use V7 encryption?
+static int v7init;		// Flag: V7 encryption already initialized?
+static int beefcodf;		// Flag: Is it BEEFC0DF?
 //u32 unkwn;
 
 u32 MulInverse(u32 word);
@@ -506,7 +506,7 @@ void CB7DecryptCode(u32 *addr, u32 *val)
 
 int CB7SelfTest(void)
 {
-	const u32 testcodes[NUM_TESTCODES*2] = {
+	static const u32 testcodes[NUM_TESTCODES*2] = {
 		0x000FFFFE, 0x0000007D,
 		0x90175B28, 0x0C061A24,
 		0x20323260, 0xFFFFFFFF

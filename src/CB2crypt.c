@@ -38,10 +38,13 @@
 
 // Application's name and current version
 #define APP_NAME		"CB2crypt"
-#define APP_VERSION		"1.2"
+#define APP_VERSION		"1.21"
 
 // Title bar text for main window
 #define TITLEBAR_TEXT		APP_NAME" v"APP_VERSION
+
+// E-mail address for About box
+#define EMAIL_ADDR		"mailto:misfire@xploderfreax.de?subject="APP_NAME
 
 // Max text size for edit boxes
 // FIXME: Win98/ME can only handle ~30k
@@ -119,6 +122,29 @@ int GetTokenType(const char *s)
 }
 
 /*
+ * Computes the CRC-16 value of a data buffer.
+ */
+#ifdef _DEBUG
+u16 GetCrc16(const u8 *blk, int len)
+{
+	static const u16 tbl[] = {
+		0x0000, 0xCC01, 0xD801, 0x1400, 0xF001, 0x3C00, 0x2800, 0xE401,
+		0xA001, 0x6C00, 0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4400
+	};
+
+	u16 crc = 0;
+	int i;
+
+	for (i = 0; i < len; i++) {
+		crc = (crc >> 4) ^ tbl[(blk[i] ^ crc) & 0xF];
+		crc = (crc >> 4) ^ tbl[((blk[i] >> 4) ^ crc) & 0xF];
+	}
+
+	return crc;
+}
+#endif
+
+/*
  * Parses the text from the input dialog box for codes, processes them and
  * displays the result in the output dialog box.
  */
@@ -149,10 +175,9 @@ int ParseText(HWND hwnd, int mode)
 	SetDlgItemText(hwnd, IDM_EDIT_OUT, "");
 
 	// Get text from dialog box
-	//i = GetDlgItemText(hwnd, IDM_EDIT_IN, textin, TEXTSIZE); // Weird results under Win98?
 	GetDlgItemText(hwnd, IDM_EDIT_IN, textin, TEXTSIZE+1);
-	if (!(i = strlen(textin))) {
-		MsgBox(hwnd, MB_OK | MB_ICONINFORMATION, "You havn't entered any codes.");
+	if (!strlen(textin)) {
+		MsgBox(hwnd, MB_OK | MB_ICONINFORMATION, "You haven't entered any codes.");
 		return -2;
 	}
 
@@ -175,11 +200,21 @@ int ParseText(HWND hwnd, int mode)
 				tok[toknum].type = GetTokenType(p);
 
 				// Allocate more tokens if necessary
-				if (++toknum == tokmax) {
+				if ((toknum + 1) == tokmax) {
 					tokmax += TOK_STEP_NUM;
 					tok = (token_t*)realloc(tok, tokmax * sizeof(token_t));
 					if (tok == NULL) return -3;
 				}
+
+				// Convert TOK_CODE to TOK_CODEADDR + TOK_CODEVAL
+				if (tok[toknum].type & TOK_CODE) {
+					tok[toknum].str = p;
+					tok[toknum].type = TOK_CODEADDR;
+					tok[toknum+1].str = p + NUM_DIGITS_OCTET;
+					tok[toknum+1].type = TOK_CODEVAL | (tok[toknum].type & TOK_WILDCARD);
+					toknum++;
+				}
+				toknum++;
 
 				// Next token
 				p = strtok(NULL, TOK_DELIMITER);
@@ -188,6 +223,7 @@ int ParseText(HWND hwnd, int mode)
 			// Parse line from right to left
 			ctrl = 0; // Preceding token type
 			for (i = (toknum-1); i >= 0; i--) {
+				// A code consists of two hex octets
 				if ((tok[i].type & TOK_HEXOCTET) && (ctrl & TOK_HEXOCTET)) {
 					tok[i].type = TOK_CODEADDR | (ctrl & TOK_WILDCARD);
 					tok[i+1].type = TOK_CODEVAL | (ctrl & TOK_WILDCARD);
@@ -200,25 +236,18 @@ int ParseText(HWND hwnd, int mode)
 			i = 0;
 			while (i < toknum) {
 #ifdef _DEBUG
-				fprintf(fp, "%i: %s\n", tok[i].type, tok[i].str);
+				fprintf(fp, "%2i: %s\n", tok[i].type, tok[i].str);
 				if (tok[i].type & TOK_CODEADDR)
 					fprintf(fp, "%i: %s\n", tok[i+1].type, tok[i+1].str);
 #endif
-				if ((tok[i].type & TOK_CODE) || (tok[i].type & TOK_CODEADDR)) {
-					// Convert code address
-					STR_TO_U32(tok[i].str, &code[0]);
+				if (tok[i].type & TOK_CODEADDR) {
+					// Convert code address and value
+					STR_TO_U32(tok[i++].str, &code[0]);
 
-					// Convert code value
-					switch (tok[i].type) {
-						case TOK_CODE:
-							STR_TO_U32(tok[i].str + NUM_DIGITS_OCTET, &code[1]);
-							break;
-						case TOK_CODEADDR:
-							STR_TO_U32(tok[i+1].str, &code[1]);
-							break;
-						default:
-							code[1] = 0; // Whatever
-					}
+					if (tok[i].type & TOK_WILDCARD)
+						code[1] = 0; // Whatever
+					else
+						STR_TO_U32(tok[i].str, &code[1]);
 
 					// Decrypt/encrypt code
 					switch (mode) {
@@ -233,21 +262,15 @@ int ParseText(HWND hwnd, int mode)
 							break;
 					}
 
-					// Format code address for output
+					// Format code address and value for output
 					sprintf(codestr, "%08X ", code[0]);
 
-					// Format code value
 					if (tok[i].type & TOK_WILDCARD) {
-						if (tok[i].type & TOK_CODE)
-							p = tok[i].str + NUM_DIGITS_OCTET;
-						else // TOK_CODEADDR
-							p = tok[++i].str;
+						p = tok[i].str;
 						StrMakeUpper(p);
 						sprintf(&codestr[NUM_DIGITS_OCTET+1], "%s", p);
-					} else {
+					} else
 						sprintf(&codestr[NUM_DIGITS_OCTET+1], "%08X", code[1]);
-						if (tok[i].type & TOK_CODEADDR) i++;
-					}
 
 					// Append code to output
 					if (i > 1) strcat(textout, NEWLINE);
@@ -271,6 +294,10 @@ int ParseText(HWND hwnd, int mode)
 
 #ifdef _DEBUG
 	fclose(fp);
+
+	// Show CRC to check the parser's work
+	MsgBox(hwnd, MB_ICONINFORMATION | MB_OK, "CRC16: 0x%04X",
+		GetCrc16(textout, strlen(textout)));
 #endif
 	// Display result
 	SetDlgItemText(hwnd, IDM_EDIT_OUT, textout);
@@ -700,12 +727,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 BOOL CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	LOGFONT lf;
-	HFONT hFont;
+	static HFONT hFont;
 
 	switch (message) {
 		case WM_INITDIALOG:
 			// Setup font
-			hFont = (HFONT)SendMessage(hDlg, WM_GETFONT, 0, 0);
+			hFont = (HFONT)SendDlgItemMessage(hDlg, IDM_EDIT_IN, WM_GETFONT, 0, 0);
 			GetObject(hFont, sizeof(LOGFONT), &lf);
 			strcpy(lf.lfFaceName, "Courier");
 			hFont = CreateFontIndirect(&lf);
@@ -716,6 +743,11 @@ BOOL CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 			SendDlgItemMessage(hDlg, IDM_EDIT_IN, EM_SETLIMITTEXT, TEXTSIZE, 0);
 			return TRUE;
 
+		case WM_NCDESTROY:
+			if (hFont)
+				DeleteObject(hFont);
+			break;
+
 		// Other messages are processed by the window procedure.
 	}
 
@@ -723,23 +755,72 @@ BOOL CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 }
 
 /*
+ * Subclass procedure that sets the hand cursor when moving the cursor over a
+ * link (e.g. URL, e-mail address).
+ */
+WNDPROC g_wndpStatic;
+
+LRESULT CALLBACK LinkProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	switch (message) {
+		case WM_SETCURSOR:
+			SetCursor(LoadCursor(NULL, IDC_HAND));
+			return TRUE;
+	}
+
+	return CallWindowProc(g_wndpStatic, hwnd, message, wParam, lParam);
+}
+
+/*
  * Callback function for About box.
  */
 BOOL CALLBACK AboutDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
+	LOGFONT lf;
+	static HFONT hFont;
+
 	switch (message) {
 		case WM_INITDIALOG:
 			// Change text to include version number
 			SetDlgItemText(hDlg, IDC_APP_VERSION, APP_VERSION);
+
+			// Underline e-mail address
+			hFont = (HFONT)SendDlgItemMessage(hDlg, IDC_EMAIL, WM_GETFONT, 0, 0);
+			GetObject(hFont, sizeof(lf), &lf);
+			lf.lfUnderline = TRUE;
+			hFont = CreateFontIndirect(&lf);
+			SendDlgItemMessage(hDlg, IDC_EMAIL, WM_SETFONT, (WPARAM)hFont, (LPARAM)TRUE);
+
+			// Set subclass procedure for e-mail address
+			g_wndpStatic = (WNDPROC)SetWindowLongPtr(GetDlgItem(hDlg, IDC_EMAIL), GWLP_WNDPROC, (LONG_PTR)LinkProc);
 			return TRUE;
 
 		case WM_COMMAND:
 			switch (LOWORD(wParam)) {
+				case IDC_EMAIL:
+					if (HIWORD(wParam) == STN_CLICKED)
+						ShellExecute(hDlg, NULL, EMAIL_ADDR, NULL, NULL, SW_SHOW);
+					return TRUE;
+
 				case IDOK:
 				case IDCANCEL:
 					EndDialog(hDlg, 0);
 					return TRUE;
 			}
+			break;
+
+		case WM_CTLCOLORSTATIC:
+			// Set text color for e-mail address
+			if (GetDlgItem(hDlg, IDC_EMAIL) == (HWND)lParam) {
+				SetTextColor((HDC)wParam, GetSysColor(COLOR_HIGHLIGHT));
+				SetBkMode((HDC)wParam, TRANSPARENT);
+				return (BOOL)GetStockObject(NULL_BRUSH);
+			}
+			break;
+
+		case WM_NCDESTROY:
+			if (hFont)
+				DeleteObject(hFont);
 			break;
 
 		case WM_CLOSE:

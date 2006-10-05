@@ -19,7 +19,9 @@ Please think about it.
 
 ***
 
-Many thanks to the people that donated so far (Sep 19 2006):
+Many thanks to the people that donated so far (Oct 5 2006):
 
 1. scar (33,08 USD)
-2. maybe you? ;)
+
+
+EOF
