@@ -14,12 +14,18 @@ CodeBreaker PS2, including version 7 or higher.
    Version history
 ---===============---
 
+v1.3 (Jan 10 2007)
++ Now there's an option to add a blank line between the codes.
+  This was requested by Jon [The Cyndicate].
++ The new "Copy Output To Input" feature can be used to re-encrypt codes easily.
++ Added a "real" ESC accelerator to exit the program.
+
 v1.21 (Oct 5 2006)
 * The e-mail address in the About box is now a real URL.
 * Fixed a spelling mistake in a message box: "You haven't entered any codes."
 * cb2_crypto.c: Made global variables static.
 * Simplified the parser algorithm.
-* Added a CRC function to check the parser's work in debug mode.
++ Added a CRC function to check the parser's work in debug mode.
 * Renamed "donate.txt" to "donation.txt".
 
 v1.2 (Sep 19 2006)

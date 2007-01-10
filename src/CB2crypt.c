@@ -38,7 +38,7 @@
 
 // Application's name and current version
 #define APP_NAME		"CB2crypt"
-#define APP_VERSION		"1.21"
+#define APP_VERSION		"1.3"
 
 // Title bar text for main window
 #define TITLEBAR_TEXT		APP_NAME" v"APP_VERSION
@@ -84,6 +84,8 @@ enum {
 
 // Flag: Use common V7 encryption?
 int v7common = 0;
+// Flag: Add blank line between codes?
+int blankline = 0;
 
 /* Local function prototypes */
 
@@ -131,7 +133,6 @@ u16 GetCrc16(const u8 *blk, int len)
 		0x0000, 0xCC01, 0xD801, 0x1400, 0xF001, 0x3C00, 0x2800, 0xE401,
 		0xA001, 0x6C00, 0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4400
 	};
-
 	u16 crc = 0;
 	int i;
 
@@ -154,10 +155,10 @@ int ParseText(HWND hwnd, int mode)
 	int toknum, tokmax = TOK_STEP_NUM;
 	char *p, *s;
 	char textin[TEXTSIZE+3]; // incl. CR, LF and NUL
-	char textout[TEXTSIZE+1024]; // 1k reserve, should be sufficient
+	char textout[TEXTSIZE+8*1024]; // 8k for extra formatting, ugly... I know.
 	char codestr[NUM_DIGITS_CODE+2]; // incl. space and NUL
 	u32 code[2];
-	int i, ctrl, linelen;
+	int i, linelen, ctrl, was_code = 0;
 #ifdef _DEBUG
 	FILE *fp = fopen("tokens.dbg", "w");
 #endif
@@ -276,12 +277,21 @@ int ParseText(HWND hwnd, int mode)
 					if (i > 1) strcat(textout, NEWLINE);
 					strcat(textout, codestr);
 					ctrl = 1;
-				} else {
-					// Append string to output
+					was_code = 1;
+				} else { // TOK_STRING
+					// Append newline or space
 					if (ctrl) {
 						strcat(textout, NEWLINE);
 						ctrl = 0;
 					} else if (i > 0) strcat(textout, " ");
+
+					// Add blank line if desired
+					if (blankline && was_code) {
+						strcat(textout, NEWLINE);
+						was_code = 0;
+					}
+
+					// Append string to output
 					strcat(textout, tok[i].str);
 				}
 				i++;
@@ -296,8 +306,8 @@ int ParseText(HWND hwnd, int mode)
 	fclose(fp);
 
 	// Show CRC to check the parser's work
-	MsgBox(hwnd, MB_ICONINFORMATION | MB_OK, "CRC16: 0x%04X",
-		GetCrc16(textout, strlen(textout)));
+	MsgBox(hwnd, MB_ICONINFORMATION | MB_OK, "Size: %i bytes\nCRC16: 0x%04X",
+		strlen(textout), GetCrc16(textout, strlen(textout)));
 #endif
 	// Display result
 	SetDlgItemText(hwnd, IDM_EDIT_OUT, textout);
@@ -464,6 +474,36 @@ BOOL SaveTextFile(HWND hwnd, char *szFileName)
 }
 
 /*
+ * Copies the text in the output dialog box to the input dialog box.
+ */
+BOOL CopyOutputToInput(HWND hwnd)
+{
+	char *buf;
+	HWND hCtrl;
+	int iLength;
+
+	hCtrl = GetDlgItem(hwnd, IDM_EDIT_OUT);
+	iLength = GetWindowTextLength(hCtrl);
+	if (!iLength)
+		return FALSE;
+	else if (iLength > TEXTSIZE)
+		iLength = TEXTSIZE;
+
+	buf = (char*)malloc(iLength + 1);
+	if (buf == NULL) {
+		MsgBox(hwnd, MB_ICONERROR | MB_OK, "Unable to allocate %i bytes.", iLength + 1);
+		return FALSE;
+	}
+
+	GetWindowText(hCtrl, buf, iLength + 1);
+	buf[iLength] = '\0';
+	SetDlgItemText(hwnd, IDM_EDIT_IN, buf);
+	free(buf);
+
+	return TRUE;
+}
+
+/*
  * Initializes the application.
  */
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine, int iCmdShow)
@@ -552,6 +592,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 					break;
 
 				case 1: // Submenu "Edit"
+					// Enable "Copy Output To Input" if there is any text
+					iEnable = GetWindowTextLength(GetDlgItem(hwnd, IDM_EDIT_OUT)) ? MF_ENABLED : MF_GRAYED;
+					EnableMenuItem((HMENU)wParam, IDM_MENU_OUT_TO_IN, iEnable);
+
 					hCtrl = GetFocus();
 					if (hCtrl == GetDlgItem(hwnd, IDM_EDIT_IN)) { // Input box has focus
 						// Enable "Undo" if edit-control operation can be undone
@@ -620,6 +664,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 				case IDM_CLEAR_IN:
 				case IDM_CLEAR_OUT:
 				case IDM_MENU_OPEN:
+				case IDM_MENU_OUT_TO_IN:
 					SetFocus(GetDlgItem(hwnd, IDM_EDIT_IN));
 			}
 
@@ -656,12 +701,21 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 					SetDlgItemText(hwnd, GetDlgCtrlID(hCtrl), "");
 					return 0;
 
+				case IDM_MENU_OUT_TO_IN:
+					CopyOutputToInput(hwnd);
+					return 0;
+
 				case IDM_COMMON_V7:
 				case IDM_MENU_COMMON_V7:
 					v7common ^= 1;
 					CheckMenuItem(GetMenu(hwnd), IDM_MENU_COMMON_V7, v7common ? MF_CHECKED : MF_UNCHECKED);
 					if (LOWORD(wParam) == IDM_MENU_COMMON_V7)
 						CheckDlgButton(hwnd, IDM_COMMON_V7, v7common ? BST_CHECKED : BST_UNCHECKED);
+					return 0;
+
+				case IDM_MENU_BLANK_LINE:
+					blankline ^= 1;
+					CheckMenuItem(GetMenu(hwnd), IDM_MENU_BLANK_LINE, blankline ? MF_CHECKED : MF_UNCHECKED);
 					return 0;
 
 				case IDM_MENU_OPEN:
