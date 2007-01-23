@@ -2,7 +2,7 @@
 
 ---======================================---
    CB2crypt - CodeBreaker PS2 Crypto Program
-   Copyright (C) 2006 misfire
+   Copyright (C) 2006-2007 misfire
 ---=========================================---
 
 
@@ -13,6 +13,12 @@ CodeBreaker PS2, including version 7 or higher.
 ---============---
    Version history
 ---===============---
+
+v1.4 (Jan 23 2007)
++ Options are now saved to/loaded from the registry.
+  This feature was requested by bfoos.
+* Added a "g_" prefix to the global variables in CB2crypt.c
+* Changed all copyright notices to include the year 2007.
 
 v1.3 (Jan 10 2007)
 + Now there's an option to add a blank line between the codes.

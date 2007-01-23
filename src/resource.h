@@ -1,7 +1,7 @@
 /*
  * resource.h -- IDs to use with resource file "resource.res"
  *
- * Copyright (C) 2006 misfire
+ * Copyright (C) 2006-2007 misfire
  * All rights reserved.
  *
  * This file is part of CB2crypt, the CodeBreaker PS2 Crypto Program.

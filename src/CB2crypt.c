@@ -1,7 +1,7 @@
 /*
  * CB2crypt.c -- Main project file
  *
- * Copyright (C) 2006 misfire
+ * Copyright (C) 2006-2007 misfire
  * Copyright (C) 2003-2005 Parasyte
  * All rights reserved.
  *
@@ -22,7 +22,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
- /* Includes */
+/* Includes */
 
 #include <windows.h>
 #include <stdio.h>
@@ -38,7 +38,7 @@
 
 // Application's name and current version
 #define APP_NAME		"CB2crypt"
-#define APP_VERSION		"1.3"
+#define APP_VERSION		"1.4"
 
 // Title bar text for main window
 #define TITLEBAR_TEXT		APP_NAME" v"APP_VERSION
@@ -83,9 +83,9 @@ enum {
 /* Global variables */
 
 // Flag: Use common V7 encryption?
-int v7common = 0;
+int g_v7common = 0;
 // Flag: Add blank line between codes?
-int blankline = 0;
+int g_blankline = 0;
 
 /* Local function prototypes */
 
@@ -162,7 +162,7 @@ int ParseText(HWND hwnd, int mode)
 #ifdef _DEBUG
 	FILE *fp = fopen("tokens.dbg", "w");
 #endif
-	if (v7common)
+	if (g_v7common)
 		CBSetCommonV7();
 	else
 		CBReset();
@@ -286,7 +286,7 @@ int ParseText(HWND hwnd, int mode)
 					} else if (i > 0) strcat(textout, " ");
 
 					// Add blank line if desired
-					if (blankline && was_code) {
+					if (g_blankline && was_code) {
 						strcat(textout, NEWLINE);
 						was_code = 0;
 					}
@@ -503,6 +503,109 @@ BOOL CopyOutputToInput(HWND hwnd)
 	return TRUE;
 }
 
+// HKEY_CURRENT_USER\REGSUBKEY is the registry key where the options are stored
+#define REGSUBKEY	"Software\\XFX\\CB2crypt"
+
+/*
+ * Opens the registry key HKEY_CURRENT_USER\REGSUBKEY with read access.
+ */
+BOOL RegOpenRead(HKEY *hKey, DWORD *disp)
+{
+	return (RegCreateKeyEx(HKEY_CURRENT_USER, REGSUBKEY, 0, NULL, REG_OPTION_NON_VOLATILE,
+		KEY_READ, NULL, hKey, disp) == ERROR_SUCCESS);
+}
+
+/*
+ * Opens the registry key HKEY_CURRENT_USER\REGSUBKEY with write access.
+ */
+BOOL RegOpenWrite(HKEY *hKey, DWORD *disp)
+{
+	return (RegCreateKeyEx(HKEY_CURRENT_USER, REGSUBKEY, 0, NULL, REG_OPTION_NON_VOLATILE,
+		KEY_WRITE, NULL, hKey, disp) == ERROR_SUCCESS);
+}
+
+/*
+ * Reads a doubleword value from the registry.
+ */
+BOOL RegGetDword(HKEY hKey, const char *subkey, DWORD *val)
+{
+	DWORD type, size = sizeof(DWORD);
+
+	if (RegQueryValueEx(hKey, subkey, 0, &type, (BYTE*)val, &size) != ERROR_SUCCESS)
+		return FALSE;
+
+	if ((type != REG_DWORD) || (size != sizeof(DWORD)))
+		return FALSE;
+
+	return TRUE;
+}
+
+/*
+ * Writes a doubleword value to the registry.
+ */
+BOOL RegSetDword(HKEY hKey, const char *subkey, DWORD val)
+{
+	return (RegSetValueEx(hKey, subkey, 0, REG_DWORD, (CONST BYTE*)&val,
+		sizeof(DWORD)) == ERROR_SUCCESS);
+}
+
+/*
+ * Releases a handle to the specified registry key.
+ */
+BOOL RegClose(HKEY hKey)
+{
+	return (RegCloseKey(hKey) == ERROR_SUCCESS);
+}
+
+/*
+ * Loads the program options from the registry.
+ */
+BOOL LoadOptFromReg(HWND hwnd) // hwnd is needed to apply the options to the GUI
+{
+	HKEY hKey;
+	BOOL regAccess;
+	DWORD disp, regVal;
+
+	regAccess = RegOpenRead(&hKey, &disp);
+	if (regAccess) {
+		if (disp == REG_OPENED_EXISTING_KEY) {
+			if (RegGetDword(hKey, "v7common", &regVal)) {
+				g_v7common = (int)regVal;
+				CheckMenuItem(GetMenu(hwnd), IDM_MENU_COMMON_V7, g_v7common ? MF_CHECKED : MF_UNCHECKED);
+				CheckDlgButton(hwnd, IDM_COMMON_V7, g_v7common ? BST_CHECKED : BST_UNCHECKED);
+			}
+			if (RegGetDword(hKey, "blankline", &regVal)) {
+				g_blankline = (int)regVal;
+				CheckMenuItem(GetMenu(hwnd), IDM_MENU_BLANK_LINE, g_blankline ? MF_CHECKED : MF_UNCHECKED);
+			}
+		}
+		RegClose(hKey);
+		return TRUE;
+	}
+
+	return FALSE;
+}
+
+/*
+ * Saves the program options to the registry.
+ */
+BOOL SaveOptToReg(void)
+{
+	HKEY hKey;
+	BOOL regAccess;
+	DWORD disp;
+
+	regAccess = RegOpenWrite(&hKey, &disp); // disp is ignored
+	if (regAccess) {
+		RegSetDword(hKey, "v7common", (DWORD)g_v7common);
+		RegSetDword(hKey, "blankline", (DWORD)g_blankline);
+		RegClose(hKey);
+		return TRUE;
+	}
+
+	return FALSE;
+}
+
 /*
  * Initializes the application.
  */
@@ -686,6 +789,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 				case IDM_CLOSE:
 				case IDM_MENU_EXIT:
+					SaveOptToReg();
 					PostQuitMessage(0);
 					return 0;
 
@@ -707,15 +811,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 				case IDM_COMMON_V7:
 				case IDM_MENU_COMMON_V7:
-					v7common ^= 1;
-					CheckMenuItem(GetMenu(hwnd), IDM_MENU_COMMON_V7, v7common ? MF_CHECKED : MF_UNCHECKED);
+					g_v7common ^= 1;
+					CheckMenuItem(GetMenu(hwnd), IDM_MENU_COMMON_V7, g_v7common ? MF_CHECKED : MF_UNCHECKED);
 					if (LOWORD(wParam) == IDM_MENU_COMMON_V7)
-						CheckDlgButton(hwnd, IDM_COMMON_V7, v7common ? BST_CHECKED : BST_UNCHECKED);
+						CheckDlgButton(hwnd, IDM_COMMON_V7, g_v7common ? BST_CHECKED : BST_UNCHECKED);
 					return 0;
 
 				case IDM_MENU_BLANK_LINE:
-					blankline ^= 1;
-					CheckMenuItem(GetMenu(hwnd), IDM_MENU_BLANK_LINE, blankline ? MF_CHECKED : MF_UNCHECKED);
+					g_blankline ^= 1;
+					CheckMenuItem(GetMenu(hwnd), IDM_MENU_BLANK_LINE, g_blankline ? MF_CHECKED : MF_UNCHECKED);
 					return 0;
 
 				case IDM_MENU_OPEN:
@@ -767,6 +871,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 			break;
 
 		case WM_CLOSE:
+			SaveOptToReg();
 			PostQuitMessage(0);
 			return 0;
 	}
@@ -795,6 +900,9 @@ BOOL CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 
 			// Set text limit
 			SendDlgItemMessage(hDlg, IDM_EDIT_IN, EM_SETLIMITTEXT, TEXTSIZE, 0);
+
+			// Load options from registry
+			LoadOptFromReg(hDlg);
 			return TRUE;
 
 		case WM_NCDESTROY:

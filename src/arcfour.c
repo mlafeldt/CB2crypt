@@ -1,7 +1,7 @@
 /*
  * arcfour.c -- Implementation of the stream cipher ARCFOUR
  *
- * Copyright (C) 2006 misfire
+ * Copyright (C) 2006-2007 misfire
  * Copyright (C) 1996-2000 Whistle Communications, Inc.
  * All rights reserved.
  *

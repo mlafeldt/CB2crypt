@@ -1,7 +1,7 @@
 /*
  * mystring.c -- Small library of string functions (stripped)
  *
- * Copyright (C) 2004-2006 misfire
+ * Copyright (C) 2004-2007 misfire
  * All rights reserved.
  *
  * This file is part of CB2crypt, the CodeBreaker PS2 Crypto Program.

@@ -2,7 +2,7 @@
  * cb2_crypto.c -- Functions for decrypting/encrypting cheat codes for
  * CodeBreaker PS2 (V1 + V7)
  *
- * Copyright (C) 2006 misfire
+ * Copyright (C) 2006-2007 misfire
  * All rights reserved.
  *
  * This file is part of CB2crypt, the CodeBreaker PS2 Crypto Program.
