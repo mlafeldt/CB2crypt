@@ -32,15 +32,15 @@ BIG_INT_OBJS = \
 
 OBJS	= $(BIG_INT_OBJS) arcfour.o cb2_crypto.o CB2crypt.o mystring.o resource.o
 
-all:		${OBJS}
-		${CC} $(COPTS) -o ${BIN} ${OBJS} $(CLIBS)
+all:		$(OBJS)
+		$(CC) $(COPTS) -o $(BIN) $(OBJS) $(CLIBS)
 clean:
-		${RM} $(OBJS) $(BIN)
+		$(RM) $(OBJS) $(BIN)
 
 rebuild:	clean all
 
 pack:
-		upx -9 ${BIN}
+		upx -9 $(BIN)
 
 resource.o:	resource.res
 		windres -o resource.o resource.res
