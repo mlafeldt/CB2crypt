@@ -342,7 +342,8 @@ misfire [AT] xploderfreax [DOT] de
    Donation
 ---========---
 
-If you like this software, please have a look at the file "donation.txt".
+If you enjoy CB2crypt and use it regularly, please consider a PayPal donation
+to my e-mail address above. Thank you.
 
 
 ---===---
