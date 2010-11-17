@@ -3,7 +3,7 @@ BIGINT = libbig_int
 CC = gcc
 WINDRES = windres
 
-CFLAGS += -Wall -O2 -s
+CFLAGS = -Wall -Werror -O2 -s
 CFLAGS += -I$(BIGINT)/include
 LIBS = -mwindows
 PROG = CB2crypt.exe
