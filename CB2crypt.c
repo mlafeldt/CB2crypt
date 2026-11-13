@@ -91,8 +91,8 @@ int g_blankline = 0;
 
 int MsgBox(HWND hwnd, UINT uType, const char *szFormat, ...);
 LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
-BOOL CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
-BOOL CALLBACK AboutDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK AboutDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
 /* Function definitions */
 
@@ -883,7 +883,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 /*
  * Callback function for Main dialog.
  */
-BOOL CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	LOGFONT lf;
 	static HFONT hFont;
@@ -936,7 +936,7 @@ LRESULT CALLBACK LinkProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 /*
  * Callback function for About box.
  */
-BOOL CALLBACK AboutDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+INT_PTR CALLBACK AboutDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	LOGFONT lf;
 	static HFONT hFont;
@@ -976,7 +976,7 @@ BOOL CALLBACK AboutDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam
 			if (GetDlgItem(hDlg, IDC_EMAIL) == (HWND)lParam) {
 				SetTextColor((HDC)wParam, GetSysColor(COLOR_HIGHLIGHT));
 				SetBkMode((HDC)wParam, TRANSPARENT);
-				return (BOOL)GetStockObject(NULL_BRUSH);
+				return (INT_PTR)GetStockObject(NULL_BRUSH);
 			}
 			break;
 
