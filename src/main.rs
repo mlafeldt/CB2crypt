@@ -7,9 +7,9 @@ mod about;
 mod parser;
 mod widgets;
 
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, RefCell, RefMut};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use saudade::{
@@ -79,6 +79,8 @@ struct Ui {
     blank_line: Rc<Cell<bool>>,
     dialog: Rc<RefCell<Dialog>>,
     files: Rc<RefCell<FileDialog>>,
+    /// Where the file dialog opens next, once a file was picked somewhere.
+    folder: Rc<RefCell<Option<PathBuf>>>,
     about: Rc<RefCell<Modal>>,
 }
 
@@ -112,6 +114,7 @@ impl Ui {
             blank_line: Rc::new(Cell::new(false)),
             dialog: Rc::new(RefCell::new(Dialog::new())),
             files: Rc::new(RefCell::new(files)),
+            folder: Rc::new(RefCell::new(None)),
             about: Rc::new(RefCell::new(Modal::new())),
         }
     }
@@ -227,19 +230,38 @@ impl Ui {
         self.focus_input();
     }
 
+    /// The file dialog, set to open in the folder of the file picked last,
+    /// as a Windows one does. The folder is noted when a file is picked and
+    /// only handed over here, since the dialog is busy while it reports one.
+    fn files(&self) -> RefMut<'_, FileDialog> {
+        let mut files = self.files.borrow_mut();
+        if let Some(folder) = self.folder.take() {
+            files.set_directory(folder);
+        }
+        files
+    }
+
+    fn picked(&self, path: &Path) {
+        if let Some(folder) = path.parent() {
+            self.folder.replace(Some(folder.to_path_buf()));
+        }
+    }
+
     fn load(&self) {
         let ui = self.clone();
-        self.files.borrow_mut().show_open(move |cx, path| {
-            match fs::read(path) {
-                Ok(bytes) => {
-                    let text = String::from_utf8_lossy(&bytes).replace("\r\n", "\n");
+        self.files().show_open(move |cx, path| {
+            ui.picked(path);
+            let problem = match fs::read(path).map(|bytes| decode(&bytes)) {
+                Ok(Some(text)) => {
                     ui.input.borrow_mut().set_text(&text);
                     ui.focus_input();
+                    None
                 }
-                Err(_) => ui
-                    .dialog
-                    .borrow_mut()
-                    .show_error(APP_NAME, format!("Can't read from file \"{}\"", path.display())),
+                Ok(None) => Some(format!("\"{}\" is not a text file", path.display())),
+                Err(_) => Some(format!("Can't read from file \"{}\"", path.display())),
+            };
+            if let Some(problem) = problem {
+                ui.dialog.borrow_mut().show_error(APP_NAME, problem);
             }
             cx.request_paint();
         });
@@ -247,10 +269,18 @@ impl Ui {
 
     fn save(&self) {
         let ui = self.clone();
-        self.files.borrow_mut().show_save("codes.txt", move |cx, path| {
-            // The file dialog takes any name, so asking is left to us.
+        self.files().show_save("codes.txt", move |cx, path| {
+            // A name typed without an extension gets the Windows program's:
+            // the file would not show under the dialog's "*.txt" otherwise.
+            let path = &match path.extension() {
+                Some(_) => path.to_path_buf(),
+                None => path.with_extension("txt"),
+            };
+            ui.picked(path);
+            // The file dialog takes any name, so asking is left to us, and
+            // it is the file about to be written that we ask about.
             if path.exists() {
-                let (ui, path) = (ui.clone(), path.to_path_buf());
+                let (ui, path) = (ui.clone(), path.clone());
                 let question = format!("{} already exists.\nDo you want to replace it?", path.display());
                 ui.clone()
                     .dialog
@@ -267,7 +297,8 @@ impl Ui {
     }
 
     fn write(&self, path: &Path) {
-        if fs::write(path, self.output.borrow().text()).is_err() {
+        let text = line_ends(self.output.borrow().text(), cfg!(windows));
+        if fs::write(path, text).is_err() {
             self.dialog
                 .borrow_mut()
                 .show_error(APP_NAME, format!("Can't write to file \"{}\"", path.display()));
@@ -278,6 +309,46 @@ impl Ui {
         self.about
             .borrow_mut()
             .show(format!("About {APP_NAME}"), about::SIZE, Box::new(About::new()));
+    }
+}
+
+/// The text as a file holds it. On Windows a line ends in CR LF: other
+/// programs there expect it, and the Windows CB2crypt finds no codes in a
+/// list whose lines end otherwise.
+fn line_ends(text: String, windows: bool) -> String {
+    if windows { text.replace('\n', "\r\n") } else { text }
+}
+
+/// The text of a loaded file, or `None` for a file that holds no text: a
+/// program, an image, a save. Those have zero bytes, which text never has.
+///
+/// Code lists from the Windows days are often not UTF-8 but in the Western
+/// code page of Windows. Read as UTF-8 their accents and trademark signs
+/// would come out as question marks, and be saved as such.
+fn decode(bytes: &[u8]) -> Option<String> {
+    if bytes.contains(&0) {
+        return None;
+    }
+    let text = match std::str::from_utf8(bytes) {
+        // Notepad marks its UTF-8 files with a byte order mark.
+        Ok(text) => text.strip_prefix('\u{FEFF}').unwrap_or(text).to_owned(),
+        Err(_) => bytes.iter().map(|&byte| windows_1252(byte)).collect(),
+    };
+    Some(text.replace("\r\n", "\n"))
+}
+
+/// A byte of Windows-1252 text. It is Latin-1, whose bytes are the code
+/// points of the same number, but for 0x80 to 0x9F, where Windows put
+/// punctuation in place of control codes. The five it left empty stay
+/// control codes.
+fn windows_1252(byte: u8) -> char {
+    const PUNCTUATION: [char; 32] = [
+        '€', '\u{81}', '‚', 'ƒ', '„', '…', '†', '‡', 'ˆ', '‰', 'Š', '‹', 'Œ', '\u{8D}', 'Ž', '\u{8F}', '\u{90}', '‘',
+        '’', '“', '”', '•', '–', '—', '˜', '™', 'š', '›', 'œ', '\u{9D}', 'ž', 'Ÿ',
+    ];
+    match byte {
+        0x80..=0x9F => PUNCTUATION[usize::from(byte - 0x80)],
+        _ => char::from(byte),
     }
 }
 
@@ -915,6 +986,98 @@ mod tests {
         h.key('f', alt);
         h.press(NamedKey::Enter);
         assert!(h.ui.files.borrow().is_open());
+    }
+
+    #[test]
+    fn the_file_dialog_reopens_where_a_file_was_picked_last() {
+        let folder = std::env::temp_dir().join(format!("cb2crypt-test-{}", std::process::id()));
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join("one.txt"), "first").unwrap();
+        fs::write(folder.join("two.txt"), "second").unwrap();
+
+        let mut h = harness();
+        h.menu('f', 'l');
+        h.type_text(folder.join("one.txt").to_str().unwrap());
+        h.press(NamedKey::Enter);
+        assert_eq!(h.input(), "first");
+
+        // A bare name is looked up in the folder the dialog shows.
+        h.menu('f', 'l');
+        h.type_text("two.txt");
+        h.press(NamedKey::Enter);
+        fs::remove_dir_all(&folder).unwrap();
+        assert_eq!(h.input(), "second");
+    }
+
+    #[test]
+    fn a_name_saved_without_an_extension_gets_txt() {
+        let folder = std::env::temp_dir().join(format!("cb2crypt-test-save-{}", std::process::id()));
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join("taken.txt"), "old").unwrap();
+
+        let mut h = harness();
+        h.type_text("2033BA10 FFFFFFFF");
+        h.key('r', primary());
+        let save = |h: &mut Harness<_>, name: &str| {
+            h.menu('f', 's');
+            h.key('a', primary());
+            h.type_text(folder.join(name).to_str().unwrap());
+            h.press(NamedKey::Enter);
+        };
+
+        save(&mut h, "result");
+        assert!(!folder.join("result").exists());
+        let saved = line_ends("2033BA10 FFFFFFFF\n".to_string(), cfg!(windows));
+        assert_eq!(fs::read(folder.join("result.txt")).unwrap(), saved.into_bytes());
+
+        save(&mut h, "list.cb");
+        assert!(folder.join("list.cb").exists(), "a given extension is kept");
+
+        // The file asked about is the one that would be written.
+        save(&mut h, "taken");
+        let asked = h.ui.dialog.borrow().is_open();
+        let untouched = fs::read(folder.join("taken.txt")).unwrap();
+        fs::remove_dir_all(&folder).unwrap();
+        assert!(asked);
+        assert_eq!(untouched, b"old");
+    }
+
+    #[test]
+    fn saved_lines_end_as_the_platform_ends_them() {
+        let text = || "one\ntwo\n".to_string();
+        assert_eq!(line_ends(text(), true), "one\r\ntwo\r\n");
+        assert_eq!(line_ends(text(), false), "one\ntwo\n");
+    }
+
+    #[test]
+    fn a_file_that_is_no_text_is_refused() {
+        let folder = std::env::temp_dir().join(format!("cb2crypt-test-binary-{}", std::process::id()));
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join("save.bin"), b"\x7FELF\0\0\x01\xFF\xFE garbage").unwrap();
+
+        let mut h = harness();
+        h.type_text("mine");
+        h.menu('f', 'l');
+        h.type_text(folder.join("save.bin").to_str().unwrap());
+        h.press(NamedKey::Enter);
+        fs::remove_dir_all(&folder).unwrap();
+
+        assert!(h.ui.dialog.borrow().is_open(), "says why");
+        assert_eq!(h.input(), "mine", "and leaves the box alone");
+    }
+
+    #[test]
+    fn loaded_text_is_read_as_utf8_or_as_windows_wrote_it() {
+        assert_eq!(decode(b"caf\xC3\xA9\r\nx").unwrap(), "café\nx");
+        assert_eq!(
+            decode(b"\xEF\xBB\xBF\"Game\"").unwrap(),
+            "\"Game\"",
+            "no byte order mark"
+        );
+        // Not UTF-8: é, the trademark sign and curly quotes of code page 1252.
+        assert_eq!(decode(b"caf\xE9 \x99 \x93x\x94").unwrap(), "café ™ “x”");
+        assert_eq!(decode(b"").unwrap(), "");
+        assert_eq!(decode(b"a\0b"), None);
     }
 
     #[test]
