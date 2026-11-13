@@ -205,13 +205,20 @@ impl Ui {
 
     fn crypt(&self, mode: Mode) {
         if !self.has_input() {
+            // As in the Windows program, a run that is refused still empties
+            // the output box: what was there came from codes now gone.
+            self.output.borrow_mut().set_text("");
             self.dialog
                 .borrow_mut()
                 .show_info(APP_NAME, "You haven't entered any codes.");
             return;
         }
+        // Every line ends in a newline, the last one too, as in the Windows
+        // program: the caret can go below the last code, and a copy of the
+        // lot pastes as whole lines.
         let lines = parser::process(&self.input.borrow().text(), mode, self.options());
-        self.output.borrow_mut().set_text(&lines.join("\n"));
+        let text: String = lines.iter().flat_map(|line| [line, "\n"]).collect();
+        self.output.borrow_mut().set_text(&text);
     }
 
     fn copy_output_to_input(&self) {
@@ -260,7 +267,7 @@ impl Ui {
     }
 
     fn write(&self, path: &Path) {
-        if fs::write(path, self.output.borrow().text() + "\n").is_err() {
+        if fs::write(path, self.output.borrow().text()).is_err() {
             self.dialog
                 .borrow_mut()
                 .show_error(APP_NAME, format!("Can't write to file \"{}\"", path.display()));
@@ -571,7 +578,7 @@ mod tests {
         let mut h = harness();
         h.type_text("Slot 1   1A7D6192 0000????");
         h.click(decrypt_button());
-        assert_eq!(h.output(), "Slot 1\n10754244 0000????");
+        assert_eq!(h.output(), "Slot 1\n10754244 0000????\n");
         assert_eq!(h.input(), "Slot 1   1A7D6192 0000????");
     }
 
@@ -580,16 +587,16 @@ mod tests {
         let mut h = harness();
         h.type_text("2033BA10 FFFFFFFF");
         h.key('e', primary());
-        assert_eq!(h.output(), "2ABB1147 FFFFFFFF");
+        assert_eq!(h.output(), "2ABB1147 FFFFFFFF\n");
         assert_eq!(h.input(), "2033BA10 FFFFFFFF", "the shortcut must not type");
 
         h.ui.input.borrow_mut().set_text("2ABB1147 FFFFFFFF");
         h.key('d', primary());
-        assert_eq!(h.output(), "2033BA10 FFFFFFFF");
+        assert_eq!(h.output(), "2033BA10 FFFFFFFF\n");
 
         h.ui.input.borrow_mut().set_text("x 2abb1147ffffffff");
         h.key('r', primary());
-        assert_eq!(h.output(), "x\n2ABB1147 FFFFFFFF");
+        assert_eq!(h.output(), "x\n2ABB1147 FFFFFFFF\n");
     }
 
     #[test]
@@ -598,7 +605,7 @@ mod tests {
         h.type_text("2033BA10 FFFFFFFF");
         h.ui.common_v7.borrow_mut().set_checked(true);
         h.key('e', primary());
-        assert_eq!(h.output(), "AE17E302 4AE8B74D");
+        assert_eq!(h.output(), "AE17E302 4AE8B74D\n");
     }
 
     #[test]
@@ -607,6 +614,20 @@ mod tests {
         h.click(decrypt_button());
         assert!(h.ui.dialog.borrow().is_open());
         assert_eq!(h.output(), "");
+    }
+
+    #[test]
+    fn asking_for_codes_empties_the_output_box() {
+        let mut h = harness();
+        h.type_text("2033BA10 FFFFFFFF");
+        h.key('r', primary());
+        assert_eq!(h.output(), "2033BA10 FFFFFFFF\n");
+
+        h.key('a', primary());
+        h.press(NamedKey::Backspace);
+        h.key('r', primary());
+        assert!(h.ui.dialog.borrow().is_open());
+        assert_eq!(h.output(), "", "no result of codes that are gone");
     }
 
     #[test]
@@ -648,7 +669,7 @@ mod tests {
         h.key('a', primary());
         h.key('x', primary());
         h.key('v', primary());
-        assert_eq!(h.output(), "2033BA10 FFFFFFFF");
+        assert_eq!(h.output(), "2033BA10 FFFFFFFF\n");
     }
 
     #[test]
@@ -802,7 +823,7 @@ mod tests {
         h.press(NamedKey::Tab);
 
         h.menu('e', 'i');
-        assert_eq!(h.input(), "x\n2033BA10 FFFFFFFF");
+        assert_eq!(h.input(), "x\n2033BA10 FFFFFFFF\n");
         assert!(h.ui.input.borrow().is_focused());
         assert!(!h.ui.can_undo(), "a new text has no history");
     }

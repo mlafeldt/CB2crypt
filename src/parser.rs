@@ -5,11 +5,13 @@
 //! hex-looking words in a description don't eat the code's address, and every
 //! code is moved to a line of its own.
 //!
-//! The original dropped every blank line. Here the output is laid out like
-//! cb2util's: one blank line before every game title, which is a line in
-//! double quotes, whether the input had one or not. Elsewhere a run of blank
-//! lines is kept as a single one. Also like cb2util, every game title resets
-//! the crypto, so that a V7 game doesn't garble the games after it.
+//! Like the original, it drops every blank line of the input, and has an
+//! option to put one after each run of codes. Unlike the original, and like
+//! cb2util, it always puts one before every game title, which is a line in
+//! double quotes. So the blank lines of the output follow from the option
+//! alone, and turning it off takes them out of a list that had them. Also
+//! like cb2util, every game title resets the crypto, so that a V7 game
+//! doesn't garble the games after it.
 //!
 //! Two bugs of the original are not reproduced: a 16-digit code lost its `?`
 //! wildcards, and an 8-digit token with wildcards could become an address.
@@ -87,8 +89,10 @@ pub fn process(text: &str, mode: Mode, options: Options) -> Vec<String> {
 
     for line in text.lines() {
         let tokens = tokenize(line);
+        // Blank lines are not carried over: where the output has one is up
+        // to the rules below alone, so running it through again with the
+        // option turned off takes out what the option put in.
         if tokens.is_empty() {
-            gap = true;
             continue;
         }
         let mut pending = String::new();
@@ -142,8 +146,13 @@ fn tokenize(line: &str) -> Vec<Token<'_>> {
                 s,
                 wildcard: s.contains('?'),
             });
-        } else if s.len() == DIGITS * 2 && is_hex(&s[..DIGITS]) && is_hex_or_wildcard(&s[DIGITS..]) {
-            let (addr, val) = s.split_at(DIGITS);
+        } else if s.len() == DIGITS * 2
+            // Sixteen bytes need not be sixteen characters: the middle may
+            // fall inside one, and then this is no code.
+            && let Some((addr, val)) = s.split_at_checked(DIGITS)
+            && is_hex(addr)
+            && is_hex_or_wildcard(val)
+        {
             tokens.push(Token::Addr(addr));
             tokens.push(Token::Val {
                 s: val,
@@ -330,11 +339,24 @@ mod tests {
     }
 
     #[test]
-    fn blank_lines_between_lines_are_kept_as_one() {
+    fn blank_lines_of_the_input_are_dropped() {
         assert_eq!(
             decrypt("\r\n  \t\r\nA\r\n\r\n \r\n2AFF014C 2411FFFF\r\n\r\n"),
-            ["A", "", "2043AFCC 2411FFFF"]
+            ["A", "2043AFCC 2411FFFF"]
         );
+    }
+
+    #[test]
+    fn turning_the_option_off_takes_its_blank_lines_out_again() {
+        let text = "\"G\"\nA\n2033BA10 FFFFFFFF\nB\n2033BA14 FFFFFFFF\n\"H\"\nC";
+        let plain = process(text, Mode::Reformat, Options::default());
+        let options = Options {
+            blank_line: true,
+            ..Options::default()
+        };
+        let spaced = process(text, Mode::Reformat, options);
+        assert_ne!(spaced, plain);
+        assert_eq!(process(&spaced.join("\n"), Mode::Reformat, Options::default()), plain);
     }
 
     #[test]
@@ -405,6 +427,14 @@ mod tests {
     }
 
     #[test]
+    fn sixteen_bytes_that_are_not_sixteen_characters_are_text() {
+        // Byte 8 falls inside the first "€".
+        let word = "123456€€abcd";
+        assert_eq!(word.len(), 16);
+        assert_eq!(decrypt(word), [word]);
+    }
+
+    #[test]
     fn empty_input() {
         assert!(decrypt("").is_empty());
         assert!(run(" \n\n", Mode::Encrypt, true).is_empty());
@@ -414,7 +444,7 @@ mod tests {
     fn reformat_leaves_codes_alone() {
         assert_eq!(
             run("Slot 1   1a7d6192 0000????\n\n2aff014c2411ffff", Mode::Reformat, true),
-            ["Slot 1", "1A7D6192 0000????", "", "2AFF014C 2411FFFF"]
+            ["Slot 1", "1A7D6192 0000????", "2AFF014C 2411FFFF"]
         );
     }
 
