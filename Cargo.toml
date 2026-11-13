@@ -1,0 +1,21 @@
+[package]
+name = "cb2crypt"
+version = "2.0.0"
+description = "The 2006 Windows tool for CodeBreaker PS2 cheat codes, rebuilt in Rust"
+authors = ["Mathias Lafeldt <mathias.lafeldt@gmail.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/mlafeldt/CB2crypt"
+edition = "2024"
+publish = false
+
+[dependencies]
+codebreaker = "0.4.1"
+# A fork's branch while what the app relies on (the editor's read-only mode,
+# undo and horizontal scrolling, among others) is not released yet.
+saudade = { git = "https://github.com/mlafeldt/saudade", branch = "dev" }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
