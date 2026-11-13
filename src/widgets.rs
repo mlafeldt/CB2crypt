@@ -4,8 +4,8 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use saudade::{
-    Container, Event, EventCtx, MenuBar, MouseButton, Painter, Point, PopupRequest, Rect, Size, TextEditor, Theme,
-    Widget,
+    Container, Event, EventCtx, Key, MenuBar, MouseButton, NamedKey, Painter, Point, PopupRequest, Rect, Size,
+    TextEditor, Theme, Widget,
 };
 
 /// Puts a widget into the tree while callbacks elsewhere keep a handle on it.
@@ -121,17 +121,22 @@ pub struct Form {
     inner: Container,
     slots: Vec<(Rc<RefCell<dyn Widget>>, Place)>,
     focus: Rc<Cell<Option<usize>>>,
+    tabbing: Rc<Cell<bool>>,
 }
 
 impl Form {
     /// `focus` is how the rest of the program moves the keyboard: put the
     /// index of a child there, counted in the order they were added, and the
     /// form focuses that child.
-    pub fn new(focus: Rc<Cell<Option<usize>>>) -> Self {
+    ///
+    /// `tabbing` is how a child tells Tab from any other way of getting the
+    /// keyboard: it is set while the form handles a press of Tab.
+    pub fn new(focus: Rc<Cell<Option<usize>>>, tabbing: Rc<Cell<bool>>) -> Self {
         Self {
             inner: Container::new(0, 0),
             slots: Vec::new(),
             focus,
+            tabbing,
         }
     }
 
@@ -165,7 +170,11 @@ impl Widget for Form {
     // menu item asks from outside the form, and the paint that follows every
     // action is the next time the form gets to look.
     fn event(&mut self, event: &Event, ctx: &mut EventCtx) {
+        let tab = Key::Named(NamedKey::Tab);
+        self.tabbing
+            .set(matches!(event, Event::KeyDown { key, .. } if *key == tab));
         self.inner.event(event, ctx);
+        self.tabbing.set(false);
         self.move_focus();
     }
     fn paint(&mut self, painter: &mut Painter, theme: &Theme) {
@@ -247,16 +256,24 @@ pub enum Side {
 ///
 /// It records which box had the keyboard last, because the Edit menu acts on
 /// that one and an open menu takes the focus away before its item fires.
+///
+/// Tabbing into a box selects all of its text, as tabbing into an edit
+/// control of a Windows dialog does. A click, or an action handing the
+/// keyboard back, leaves the selection alone.
 pub struct Pane {
     pub side: Side,
     pub editor: Shared<TextEditor>,
     pub active: Rc<Cell<Side>>,
+    pub tabbing: Rc<Cell<bool>>,
 }
 
 impl Widget for Pane {
     fn set_focused(&mut self, focused: bool) {
         if focused {
             self.active.set(self.side);
+            if self.tabbing.get() {
+                self.editor.0.borrow_mut().select_all();
+            }
         }
         self.editor.set_focused(focused);
     }

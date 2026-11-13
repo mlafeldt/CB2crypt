@@ -75,6 +75,8 @@ struct Ui {
     active: Rc<Cell<Side>>,
     /// Set to a child of the form to give it the keyboard.
     focus: Rc<Cell<Option<usize>>>,
+    /// Set while a press of Tab moves the keyboard.
+    tabbing: Rc<Cell<bool>>,
     common_v7: Rc<RefCell<Checkbox>>,
     blank_line: Rc<Cell<bool>>,
     dialog: Rc<RefCell<Dialog>>,
@@ -97,12 +99,13 @@ impl Ui {
         }
 
         // Like the Windows edit controls, the boxes don't wrap their lines.
-        // Like a Windows edit control, a box shows its caret only while it
-        // has the keyboard.
+        // Like a Windows edit control, a box shows its caret and its
+        // selection only while it has the keyboard.
         let text_box = || {
             TextEditor::new(NOWHERE)
                 .with_horizontal_scrollbar(true)
                 .with_unfocused_caret(false)
+                .with_unfocused_selection(false)
         };
 
         Self {
@@ -110,6 +113,7 @@ impl Ui {
             output: Rc::new(RefCell::new(text_box().with_read_only(true))),
             active: Rc::new(Cell::new(Side::Input)),
             focus: Rc::new(Cell::new(None)),
+            tabbing: Rc::new(Cell::new(false)),
             common_v7: Rc::new(RefCell::new(common_v7)),
             blank_line: Rc::new(Cell::new(false)),
             dialog: Rc::new(RefCell::new(Dialog::new())),
@@ -150,6 +154,7 @@ impl Ui {
             side,
             editor: Shared(self.editor(side).clone()),
             active: self.active.clone(),
+            tabbing: self.tabbing.clone(),
         }
     }
 
@@ -248,13 +253,15 @@ impl Ui {
     }
 
     fn load(&self) {
+        // The Windows program hands the keyboard to the input box before it
+        // asks for a file, so it is there whatever comes of the asking.
+        self.focus_input();
         let ui = self.clone();
         self.files().show_open(move |cx, path| {
             ui.picked(path);
             let problem = match fs::read(path).map(|bytes| decode(&bytes)) {
                 Ok(Some(text)) => {
                     ui.input.borrow_mut().set_text(&text);
-                    ui.focus_input();
                     None
                 }
                 Ok(None) => Some(format!("\"{}\" is not a text file", path.display())),
@@ -357,7 +364,7 @@ fn window() -> (WindowConfig, impl Widget, Ui) {
     let ui = Ui::new();
 
     // Tab walks the controls in this order, so the boxes come first.
-    let form = Form::new(ui.focus.clone())
+    let form = Form::new(ui.focus.clone(), ui.tabbing.clone())
         .add(Caption::new("Codes to decrypt/encrypt"), |w, _| caption(Side::Input, w))
         .add(Caption::new("Codes decrypted/encrypted"), |w, _| {
             caption(Side::Output, w)
@@ -376,13 +383,8 @@ fn window() -> (WindowConfig, impl Widget, Ui) {
             Button::new(NOWHERE, "Reformat only").on_click(ui.on_button(|ui| ui.crypt(Mode::Reformat))),
             |_, h| Rect::new(MARGIN + 2 * (BUTTON_W + 6), buttons_y(h), 112, BUTTON_H),
         )
-        .add(Shared(ui.common_v7.clone()), |w, h| {
-            let (x, width) = column(Side::Output, w);
-            Rect::new(x, buttons_y(h) + 4, width - BUTTON_W - 8, 16)
-        })
-        .add(Button::new(NOWHERE, "Close").on_click(|cx| cx.close()), |w, h| {
-            Rect::new(w - MARGIN - BUTTON_W, buttons_y(h), BUTTON_W, BUTTON_H)
-        })
+        // Tab goes on in the order of the Windows program's dialog, which is
+        // not the one the controls are laid out in.
         .add(
             Button::new(NOWHERE, "Clear").on_click(ui.on_button(|ui| ui.input.borrow_mut().set_text(""))),
             |w, _| clear_button(Side::Input, w),
@@ -390,7 +392,14 @@ fn window() -> (WindowConfig, impl Widget, Ui) {
         .add(
             Button::new(NOWHERE, "Clear").on_click(ui.on_button(|ui| ui.output.borrow_mut().set_text(""))),
             |w, _| clear_button(Side::Output, w),
-        );
+        )
+        .add(Button::new(NOWHERE, "Close").on_click(|cx| cx.close()), |w, h| {
+            Rect::new(w - MARGIN - BUTTON_W, buttons_y(h), BUTTON_W, BUTTON_H)
+        })
+        .add(Shared(ui.common_v7.clone()), |w, h| {
+            let (x, width) = column(Side::Output, w);
+            Rect::new(x, buttons_y(h) + 4, width - BUTTON_W - 8, 16)
+        });
 
     let root = Column::new()
         .add_fixed(Menus(menu_bar(&ui)), MENU_H)
@@ -728,6 +737,98 @@ mod tests {
     }
 
     #[test]
+    fn tab_walks_the_controls_in_the_order_of_the_windows_program() {
+        let mut h = harness();
+        h.type_text("2033BA10 FFFFFFFF");
+        h.key('r', primary());
+
+        // Past the output box and the three buttons below: Clear, Clear.
+        for _ in 0..5 {
+            h.press(NamedKey::Tab);
+        }
+        h.press(NamedKey::Space);
+        assert_eq!(h.input(), "", "the input box's Clear comes first");
+        assert_eq!(h.output(), "2033BA10 FFFFFFFF\n");
+
+        // That handed the keyboard to the input box, the first control. The
+        // one before it is the last: the check box, after Close.
+        h.key(NamedKey::Tab, SHIFT);
+        h.press(NamedKey::Space);
+        assert!(h.ui.options().common_v7);
+    }
+
+    #[test]
+    fn tabbing_into_a_box_selects_all_of_its_text() {
+        let mut h = harness();
+        h.type_text("2033BA10 FFFFFFFF");
+        h.key('r', primary());
+        assert!(!h.ui.input.borrow().has_selection());
+
+        h.press(NamedKey::Tab);
+        assert!(h.ui.output.borrow().has_selection());
+
+        // What is typed next replaces the lot.
+        h.key(NamedKey::Tab, SHIFT);
+        h.type_text("x");
+        assert_eq!(h.input(), "x");
+
+        // Getting the keyboard back from a button selects nothing.
+        h.click(decrypt_button());
+        assert!(h.ui.input.borrow().is_focused());
+        assert!(!h.ui.input.borrow().has_selection());
+    }
+
+    /// Whether the first line of a box has a band of `color`: more of it
+    /// than the smoothed edges of a few letters could add up to.
+    fn shows<W: Widget>(h: &mut Harness<W>, side: Side, color: saudade::Color) -> bool {
+        let snap = h.backend.render(&mut h.root);
+        let r = h.ui.editor(side).borrow().bounds();
+        let (width, pixels) = (snap.width(), snap.pixels());
+        (r.y + 3..r.y + 15)
+            .flat_map(|y| (r.x + 50..r.x + 110).map(move |x| (y * width + x) as usize))
+            .filter(|&i| pixels[i] == color.0)
+            .count()
+            > 100
+    }
+
+    #[test]
+    fn a_box_shows_its_selection_only_while_it_has_the_keyboard() {
+        // The highlight is as wide as the text, so this takes a font, and
+        // the mock backend has none of its own.
+        let font = include_bytes!("../tests/fonts/DejaVuSansMono.ttf");
+        let mono = saudade::Font::from_sans_bytes(font.to_vec()).expect("a font that loads");
+        let mut h = harness();
+        h.backend = MockBackend::new(WINDOW_W, WINDOW_H)
+            .with_theme(theme(Theme::windows_31()))
+            .with_mono_font(mono);
+        let (active, muted) = (Theme::windows_31().highlight_bg, Theme::windows_31().face);
+
+        h.type_text("2033BA10 FFFFFFFF");
+        h.key('r', primary());
+        h.press(NamedKey::Tab);
+        assert!(shows(&mut h, Side::Output, active));
+
+        h.key(NamedKey::Tab, SHIFT);
+        assert!(shows(&mut h, Side::Input, active));
+        assert!(!shows(&mut h, Side::Output, active) && !shows(&mut h, Side::Output, muted));
+        assert!(h.ui.output.borrow().has_selection(), "hidden, not dropped");
+
+        // An open menu leaves the keyboard, and so the selection its Edit
+        // items act on, where it was.
+        let alt = Modifiers {
+            alt: true,
+            ..Modifiers::default()
+        };
+        h.key('o', alt);
+        assert!(shows(&mut h, Side::Input, active));
+        h.press(NamedKey::Escape);
+
+        // A button takes the keyboard for the length of its click only.
+        h.click(decrypt_button());
+        assert!(shows(&mut h, Side::Input, active));
+    }
+
+    #[test]
     fn output_box_is_read_only() {
         let mut h = harness();
         h.type_text("2033BA10 FFFFFFFF");
@@ -884,6 +985,39 @@ mod tests {
         assert!(!h.ui.output.borrow().is_focused());
         h.type_text("!");
         assert_eq!(h.input(), "2033BA10 FFFFFFFF!");
+    }
+
+    #[test]
+    fn the_codes_menu_and_its_shortcuts_leave_the_keyboard_where_it_is() {
+        // Only the buttons hand it to the input box; the Windows program
+        // drew the same line.
+        let mut h = harness();
+        h.type_text("2033BA10 FFFFFFFF");
+        h.press(NamedKey::Tab);
+
+        h.key('e', primary());
+        assert_eq!(h.output(), "2ABB1147 FFFFFFFF\n");
+        assert!(h.ui.output.borrow().is_focused());
+
+        h.menu('c', 'r');
+        assert_eq!(h.output(), "2033BA10 FFFFFFFF\n");
+        assert!(h.ui.output.borrow().is_focused());
+        assert!(!h.ui.input.borrow().is_focused());
+    }
+
+    #[test]
+    fn load_hands_the_keyboard_to_the_input_box_even_when_cancelled() {
+        let mut h = harness();
+        h.press(NamedKey::Tab);
+        assert!(h.ui.output.borrow().is_focused());
+
+        h.menu('f', 'l');
+        assert!(h.ui.files.borrow().is_open());
+        h.press(NamedKey::Escape);
+        assert!(!h.ui.files.borrow().is_open());
+        h.backend.render(&mut h.root);
+        assert!(h.ui.input.borrow().is_focused());
+        assert!(!h.ui.output.borrow().is_focused());
     }
 
     #[test]
