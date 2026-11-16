@@ -1,7 +1,7 @@
 [package]
 name = "cb2crypt"
 version = "2.0.0"
-description = "The 2006 Windows tool for CodeBreaker PS2 cheat codes, rebuilt in Rust"
+description = "App to decrypt & encrypt any cheat code for CodeBreaker PS2"
 authors = ["Mathias Lafeldt <mathias.lafeldt@gmail.com>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/mlafeldt/CB2crypt"
