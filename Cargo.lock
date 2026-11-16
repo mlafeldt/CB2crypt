@@ -1560,7 +1560,7 @@ dependencies = [
 [[package]]
 name = "saudade"
 version = "0.8.2"
-source = "git+https://github.com/mlafeldt/saudade?branch=dev#953051d0416a5f36464d348319f0daf70832919d"
+source = "git+https://github.com/mlafeldt/saudade?tag=cb2crypt-v2.0.0#953051d0416a5f36464d348319f0daf70832919d"
 dependencies = [
  "arboard",
  "block2 0.6.2",
@@ -1588,7 +1588,7 @@ dependencies = [
 [[package]]
 name = "saudade-macros"
 version = "0.2.0"
-source = "git+https://github.com/mlafeldt/saudade?branch=dev#953051d0416a5f36464d348319f0daf70832919d"
+source = "git+https://github.com/mlafeldt/saudade?tag=cb2crypt-v2.0.0#953051d0416a5f36464d348319f0daf70832919d"
 dependencies = [
  "i_overlay",
  "kurbo",

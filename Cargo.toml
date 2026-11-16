@@ -10,9 +10,10 @@ publish = false
 
 [dependencies]
 codebreaker = "0.4.1"
-# A fork's branch while what the app relies on (the editor's read-only mode,
-# undo and horizontal scrolling, among others) is not released yet.
-saudade = { git = "https://github.com/mlafeldt/saudade", branch = "dev" }
+# A fork while what the app relies on (the editor's read-only mode, undo and
+# horizontal scrolling, among others) is not released yet. The tag keeps the
+# commit reachable when the fork's dev branch moves on.
+saudade = { git = "https://github.com/mlafeldt/saudade", tag = "cb2crypt-v2.0.0" }
 
 [profile.release]
 codegen-units = 1
